@@ -18,7 +18,6 @@ static const char HELP [] =
 "blkmv v0.1 by cyman\n\n"
 "-h     show Hidden files\n"
 "-m     *Make new directories\n"
-"-d     *Delete files (prefix filename with '#' in editor)\n"
 "-r     Recursive\n"
 "-f     show Full paths\n\n"
 "* you can still create directories and delete files without\n"
@@ -245,14 +244,19 @@ main(int argc, char ** args) {
 
 	char * line = buffer;
 	for (int i=0; i < count_files; ++i) {
-		char * temp_line = line;
-		int same = compare_str_to_line(sorted_list[i], &temp_line);
+		char * next_line = line;
+		int same = compare_str_to_line(sorted_list[i], &next_line);
 		if (!same) {
-			*(temp_line-1) = '\0'; // replace newline with null
-			rename(sorted_list[i], line);
-			printf("%s -> %s\n", sorted_list[i], line);
+			if (line[0] == '#') {
+				remove(sorted_list[i]);
+				printf("rm %s\n", sorted_list[i]);
+			} else {
+				*(next_line-1) = '\0'; // replace newline with null
+				rename(sorted_list[i], line);
+				printf("%s -> %s\n", sorted_list[i], line);
+			}
 		}
-		line = temp_line;
+		line = next_line;
 	}
 
 	// delete temporary file
