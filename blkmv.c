@@ -27,6 +27,14 @@ static const char HELP [] =
 "if you did not intend to see this message you may have forgotten to\n"
 "specify any paths or files or you may have used an unknown option\n";
 
+enum {
+	ARG_HIDDEN = 0x1,
+	ARG_MKDIR  = 0x2,
+	ARG_DELETE = 0x4,
+	ARG_RECUR  = 0x8,
+	ARG_FULL   = 0x10,
+} arg_mask = 0;
+
 typedef struct Filename {
 	char name [256]; // apperantly this is the largest allowed filename
 } Filename;
@@ -60,7 +68,7 @@ sort_function(const void * voida, const void * voidb) {
 	}
 }
 
-int
+static int
 count_lines(const char * p) {
 	int result = 0;
 	while (*p != '\0') {
@@ -71,7 +79,7 @@ count_lines(const char * p) {
 	return result;
 }
 
-int
+static int
 compare_str_to_line(const char * s, char ** line_loc) {
 	char * l = *line_loc;
 	while (*s == *l) s++, l++;
@@ -85,7 +93,7 @@ compare_str_to_line(const char * s, char ** line_loc) {
 	}
 }
 
-void
+static void
 path_join(char * dest, const char * a, const char * b) {
 	int di = 0, bi = 0;
 	while (a[di] != '\0') {
@@ -131,8 +139,19 @@ main(int argc, char ** args) {
 	// parse arguments
 	for (int i=1; i < argc; ++i) {
 		if (args[i][0] == '-') {
-			// TODO: implement
-			printf("cannot take options right now\n");
+			int len = strlen(args[i]);
+			for (int o=1; o < len; ++o) {
+				switch (args[i][o]) {
+				case 'h': arg_mask |= ARG_HIDDEN; break;
+				case 'm': arg_mask |= ARG_MKDIR;  break;
+				case 'd': arg_mask |= ARG_DELETE; break;
+				case 'r': arg_mask |= ARG_RECUR;  break;
+				case 'f': arg_mask |= ARG_FULL;   break;
+				default:
+					fprintf(stderr, "unknown option '%c'", args[i][o]);
+					break;
+				}
+			}
 		} else {
 			// TODO: make list of files and directories
 			dir_name = args[i];
@@ -175,8 +194,10 @@ main(int argc, char ** args) {
 	}
 	while ((entry = readdir(directory)) != NULL) {
 		if (entry->d_type == DT_REG) { // only list actual files
-			Filename * this_file = arraddnptr(og_name_list, 1);
-			strncpy(this_file->name, entry->d_name, sizeof(this_file->name));
+			if (entry->d_name[0] != '.' || (arg_mask & ARG_HIDDEN)) {
+				Filename * this_file = arraddnptr(og_name_list, 1);
+				strncpy(this_file->name, entry->d_name, sizeof(this_file->name));
+			}
 		}
 	}
 	closedir(directory);
