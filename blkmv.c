@@ -18,9 +18,10 @@ static const char HELP [] =
 "blkmv v0.1 by cyman\n\n"
 "-h     show Hidden files\n"
 "-m     *Make new directories\n"
+"-e     *remove Empty directoties\n"
 "-r     Recursive\n"
 "-f     show Full paths\n\n"
-"* you can still create directories and delete files without\n"
+"* you can still create and remove directories without\n"
 "  the corresponding option, but you will be prompted to\n"
 "  assure this was intended\n\n"
 "if you did not intend to see this message you may have forgotten to\n"
@@ -29,7 +30,7 @@ static const char HELP [] =
 enum {
 	ARG_HIDDEN = 0x1,
 	ARG_MKDIR  = 0x2,
-	ARG_DELETE = 0x4,
+	ARG_EMPTY  = 0x4,
 	ARG_RECUR  = 0x8,
 	ARG_FULL   = 0x10,
 } arg_mask = 0;
@@ -43,6 +44,8 @@ typedef struct Filename {
 #else
 #define UNLIKELY(x) x
 #endif
+
+#define sarrlen(arr) (sizeof(arr)/sizeof(*arr))
 
 static int
 sort_function(const void * voida, const void * voidb) {
@@ -67,69 +70,38 @@ sort_function(const void * voida, const void * voidb) {
 	}
 }
 
-static int
-count_lines(const char * p) {
-	int result = 0;
-	while (*p != '\0') {
-		if (*p == '\n') result++;
-		p++;
-	}
-
-	return result;
-}
-
-static int
-compare_str_to_line(const char * s, char ** line_loc) {
-	char * l = *line_loc;
-	while (*s == *l) s++, l++;
-	if (*s == '\0' && *l == '\n') {
-		*line_loc = l+1;
-		return 1;
-	} else {
-		while (*l++ != '\n');
-		*line_loc = l;
-		return 0;
-	}
-}
-
 static void
-path_join(char * dest, const char * a, const char * b) {
-	int di = 0, bi = 0;
-	while (a[di] != '\0') {
-		dest[di] = a[di];
-		di++;
+paths_join(char * dest, int num_paths, const char * paths []) {
+	int dest_index = 0;
+	for (int path_index=0; path_index < num_paths; ++path_index) {
+		const char * s = paths[path_index];
+		while (*s != '\0') {
+			dest[dest_index] = *s;
+			dest_index++, s++;
+		}
+		if (path_index != num_paths-1 && dest[dest_index-1] != '/')
+			dest[dest_index++] = '/';
 	}
-	if (dest[di-1] != '/') dest[di++] = '/';
-
-	while (b[bi] != '\0') {
-		dest[di+bi] = b[bi];
-		bi++;
-	}
-	dest[di+bi+1] = '\0';
 }
 
 #if 0
+
 int
 main() {
-	static const char d [] = "gaming";
-	static const char d2 [] = "extra/";
+	static const char * paths [] = {
+		"game", "the_folder/", "other_place", "file.txt"
+	};
 
-	static const char f [] = "file.txt";
+	char * joined = malloc(PATH_MAX);
+	paths_join(joined, sarrlen(paths), paths); 
 
-	char * joined1 = malloc(PATH_MAX);
-	char * joined2 = malloc(PATH_MAX);
+	puts(joined);
 
-	path_join(joined1, d, f);
-	path_join(joined2, d2, f);
-
-	printf("%s\n%s\n", joined1, joined2);
-
-	free(joined2);
-	free(joined1);
-
+	free(joined);
 	return 0;
 }
-#endif
+
+#else
 
 int
 main(int argc, char ** args) {
@@ -143,7 +115,7 @@ main(int argc, char ** args) {
 				switch (args[i][o]) {
 				case 'h': arg_mask |= ARG_HIDDEN; break;
 				case 'm': arg_mask |= ARG_MKDIR;  break;
-				case 'd': arg_mask |= ARG_DELETE; break;
+				case 'e': arg_mask |= ARG_EMPTY;  break;
 				case 'r': arg_mask |= ARG_RECUR;  break;
 				case 'f': arg_mask |= ARG_FULL;   break;
 				default:
@@ -222,6 +194,8 @@ main(int argc, char ** args) {
 	snprintf(command, sizeof(command), "%s %s", EDITOR, filename_buf);
 	int _result = system(command);
 
+	int err = 0;
+
 	// load edited file into buffer
 	file = fopen(filename_buf, "r");
 	fseek(file, 0l, SEEK_END);
@@ -231,41 +205,60 @@ main(int argc, char ** args) {
 	if (!fread(buffer, filesize, 1, file)) {
 		fclose(file);
 		fprintf(stderr, "failed to read temporary file.\n");
-		return -1;
+		err = -1;
+		goto cleanup;
 	}
 	fclose(file);
 	buffer[filesize] = '\0';
 
 	// make sure there are the same number of lines
-	if (count_files != count_lines(buffer)) {
-		fputs("line count does not match, cannot parse\n", stderr);
-		return -1;
+
+	char ** new_list = malloc( count_files * sizeof(*new_list) );
+	{
+		int count_new = 0;
+		char * p = buffer;
+		new_list[count_new] = p;
+		while (*p != '\0') {
+			if (*p == '\n') {
+				*p = '\0'; // replace newline with null
+				count_new++;
+				if (count_new < count_files)
+					new_list[count_new] = p+1;
+			}
+			p++;
+		}
+
+		if (count_new != count_files) {
+			fprintf(stderr, "line count has been changed, no action can be taken\n");
+			err = -1;
+			goto cleanup;
+		}
 	}
 
-	char * line = buffer;
 	for (int i=0; i < count_files; ++i) {
-		char * next_line = line;
-		int same = compare_str_to_line(sorted_list[i], &next_line);
+		int same = strcmp(sorted_list[i], new_list[i]) == 0;
 		if (!same) {
-			if (line[0] == '#') {
+			if (new_list[i][0] == '#') {
 				remove(sorted_list[i]);
 				printf("rm %s\n", sorted_list[i]);
 			} else {
-				*(next_line-1) = '\0'; // replace newline with null
-				rename(sorted_list[i], line);
-				printf("%s -> %s\n", sorted_list[i], line);
+				rename(sorted_list[i], new_list[i]);
+				printf("%s -> %s\n", sorted_list[i], new_list[i]);
 			}
 		}
-		line = next_line;
 	}
 
+cleanup:
 	// delete temporary file
 	remove(filename_buf);
 
+	free(new_list);
 	free(buffer);
 	free(sorted_list);
 	arrfree(og_name_list);
 
-	return 0;
+	return err;
 }
+
+#endif
 
