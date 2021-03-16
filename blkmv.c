@@ -194,8 +194,6 @@ main(int argc, char ** args) {
 	snprintf(command, sizeof(command), "%s %s", EDITOR, filename_buf);
 	int _result = system(command);
 
-	int err = 0;
-
 	// load edited file into buffer
 	file = fopen(filename_buf, "r");
 	fseek(file, 0l, SEEK_END);
@@ -205,13 +203,11 @@ main(int argc, char ** args) {
 	if (!fread(buffer, filesize, 1, file)) {
 		fclose(file);
 		fprintf(stderr, "failed to read temporary file.\n");
-		err = -1;
-		goto cleanup;
+		remove(filename_buf);
+		return -1;
 	}
 	fclose(file);
 	buffer[filesize] = '\0';
-
-	// make sure there are the same number of lines
 
 	char ** new_list = malloc( count_files * sizeof(*new_list) );
 	{
@@ -230,8 +226,8 @@ main(int argc, char ** args) {
 
 		if (count_new != count_files) {
 			fprintf(stderr, "line count has been changed, no action can be taken\n");
-			err = -1;
-			goto cleanup;
+			remove(filename_buf);
+			return -1;
 		}
 	}
 
@@ -248,16 +244,14 @@ main(int argc, char ** args) {
 		}
 	}
 
-cleanup:
-	// delete temporary file
-	remove(filename_buf);
+	remove(filename_buf); // delete temporary file
 
 	free(new_list);
 	free(buffer);
 	free(sorted_list);
 	arrfree(og_name_list);
 
-	return err;
+	return 0;
 }
 
 #endif
