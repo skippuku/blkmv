@@ -9,20 +9,18 @@
 #define STB_DS_IMPLEMENTATION
 #include "stb_ds.h"
 
-static const char EDITOR [] = "nvim";
+static const char DEFAULT_EDITOR [] = "nvim";
 
 static const char FILEPATH_PREFIX [] = "/tmp/_blkmv";
 static const char FILEPATH_POSTFIX [] = ".txt";
 
 static const char HELP [] =
 "blkmv v0.1 by cyman\n\n"
-"-h     show Hidden files\n"
-"-m     *Make new directories\n"
-"-e     remove Empty directories\n"
-"-R     Recursive\n"
-"-f     show Full paths\n\n"
-"if you did not intend to see this message you may have forgotten to\n"
-"specify any paths or files or you may have used an unknown option\n";
+"usage: blkmv [OPTIONS] DIRECTORY\n"
+"-h     show [h]idden files\n"
+"-f     show [f]ull paths\n"
+"-R     [R]ecursive\n"
+;
 
 enum {
 	ARG_HIDDEN = 0x1,
@@ -117,7 +115,10 @@ find_recursive(const char * dir_name, int ** file_list, char ** file_list_buffer
 				make_new_path(dir_name, entry->d_name, new_path);
 
 				int result = find_recursive(new_path, file_list, file_list_buffer);
-				if (result) return result;
+				if (result) {
+					closedir(directory);
+					return result;
+				}
 			}
 		}
 	}
@@ -128,33 +129,52 @@ find_recursive(const char * dir_name, int ** file_list, char ** file_list_buffer
 
 int
 main(int argc, char ** args) {
+	const char * editor = DEFAULT_EDITOR;
 	char * dir_name = NULL;
 
 	// parse arguments
 	for (int i=1; i < argc; ++i) {
 		if (args[i][0] == '-') {
 			int len = strlen(args[i]);
-			for (int o=1; o < len; ++o) {
-				switch (args[i][o]) {
-				case 'h': arg_mask |= ARG_HIDDEN; break;
-				case 'm': arg_mask |= ARG_MKDIR;  break;
-				case 'e': arg_mask |= ARG_EMPTY;  break;
-				case 'R': arg_mask |= ARG_RECUR;  break;
-				case 'f': arg_mask |= ARG_FULL;   break;
-				default:
-					fprintf(stderr, "unknown option '%c'", args[i][o]);
-					break;
+			if (args[i][1] == '-') {
+				if (strcmp(&args[i][2], "with") == 0 || strcmp(&args[i][2], "use") == 0) {
+					editor = args[++i];
+				} else if (strcmp(&args[i][2], "help") == 0) {
+					fputs(HELP, stderr);
+					return 0;
+				} else {
+					fprintf(stderr, "unknown option \"%s\"\n", &args[i][2]);
+					return 0;
+				}
+			} else {
+				for (int o=1; o < len; ++o) {
+					switch (args[i][o]) {
+					case 'h': arg_mask |= ARG_HIDDEN; break;
+					case 'm': arg_mask |= ARG_MKDIR;  break;
+					case 'e': arg_mask |= ARG_EMPTY;  break;
+					case 'R': arg_mask |= ARG_RECUR;  break;
+					case 'f': arg_mask |= ARG_FULL;   break;
+					default:
+						fprintf(stderr, "unknown option '%c'", args[i][o]);
+						break;
+					}
 				}
 			}
 		} else {
 			// TODO: make list of files and directories
-			dir_name = args[i];
+			if (dir_name == NULL) {
+				dir_name = args[i];
+			} else {
+				fprintf(stderr, "cannot process more than one path\n");
+				return -1;
+			}
 		}
 	}
 
 	if (dir_name == NULL) {
+		fputs("no path was passed\n", stderr);
 		fputs(HELP, stderr);
-		return 0;
+		return -1;
 	}
 
 	// create a temporary file so it can be opened in the editor
@@ -213,8 +233,13 @@ main(int argc, char ** args) {
 
 	// open file in editor
 	char command [128];
-	snprintf(command, sizeof(command), "%s %s", EDITOR, filename_buf);
-	int _result = system(command);
+	snprintf(command, sizeof(command), "%s %s", editor, filename_buf);
+	int cmd_result = system(command);
+	if (cmd_result) {
+		fprintf(stderr, "failed to execute \"%s\"\n", command);
+		remove(filename_buf);
+		return -1;
+	}
 
 	// load edited file into buffer
 	file = fopen(filename_buf, "r");
@@ -257,10 +282,12 @@ main(int argc, char ** args) {
 		int same = strcmp(sorted_list[i], new_list[i]) == 0;
 		if (!same) {
 			if (new_list[i][0] == '#') {
-				remove(sorted_list[i]);
+				if ( remove(sorted_list[i]) )
+					printf("(failed) ");
 				printf("rm %s\n", sorted_list[i]);
 			} else {
-				rename(sorted_list[i], new_list[i]);
+				if ( rename(sorted_list[i], new_list[i]) )
+					printf("(failed) ");
 				printf("%s -> %s\n", sorted_list[i], new_list[i]);
 			}
 		}
