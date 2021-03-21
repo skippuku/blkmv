@@ -18,12 +18,9 @@ static const char HELP [] =
 "blkmv v0.1 by cyman\n\n"
 "-h     show Hidden files\n"
 "-m     *Make new directories\n"
-"-e     *remove Empty directoties\n"
+"-e     remove Empty directories\n"
 "-R     Recursive\n"
 "-f     show Full paths\n\n"
-"* you can still create and remove directories without\n"
-"  the corresponding option, but you will be prompted to\n"
-"  assure this was intended\n\n"
 "if you did not intend to see this message you may have forgotten to\n"
 "specify any paths or files or you may have used an unknown option\n";
 
@@ -183,14 +180,20 @@ main(int argc, char ** args) {
 	}
 
 	// create list of files
-	int  * og_name_list = NULL;
-	char * og_name_buffer = NULL;
-	if (chdir(dir_name)) {
-		fprintf(stderr, "failed to change working directory\n");
+	char dir_name_full [PATH_MAX];
+	if (!(arg_mask & ARG_FULL)) {
+		if (chdir(dir_name)) {
+			fprintf(stderr, "failed to change working directory\n");
+		} else {
+			dir_name = ".";
+		}
 	} else {
-		dir_name = ".";
+		realpath(dir_name, dir_name_full);
+		dir_name = dir_name_full;
 	}
 
+	int  * og_name_list = NULL;
+	char * og_name_buffer = NULL;
 	if (find_recursive(dir_name, &og_name_list, &og_name_buffer)) {
 		return -1;
 	}
