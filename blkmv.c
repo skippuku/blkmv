@@ -32,10 +32,6 @@ enum {
 	ARG_FULL   = 0x10,
 } arg_mask = 0;
 
-typedef struct Filename {
-	char name [256]; // apperantly this is the largest allowed filename
-} Filename;
-
 #define sarrlen(arr) (sizeof(arr)/sizeof(*arr))
 
 #ifdef __GNUC__
@@ -84,7 +80,16 @@ paths_join(char * dest, int num_paths, const char * paths []) {
 	dest[dest_index] = '\0';
 }
 
-// no i am not proud of the pointer to a pointer to a pointer
+static void
+make_new_path(const char * dir_name, const char * d_name, char * new_path) {
+	if (strcmp(dir_name, ".") != 0) {
+		const char * to_join [] = {dir_name, d_name};
+		paths_join(new_path, sarrlen(to_join), to_join);
+	} else {
+		strcpy(new_path, d_name);
+	}
+}
+
 static int
 find_recursive(const char * dir_name, int ** file_list, char ** file_list_buffer) {
 	DIR * directory = opendir(dir_name);
@@ -98,12 +103,7 @@ find_recursive(const char * dir_name, int ** file_list, char ** file_list_buffer
 		if (entry->d_type == DT_REG) { // regular file
 			if (entry->d_name[0] != '.' || (arg_mask & ARG_HIDDEN)) {
 				char new_path [PATH_MAX];
-				if (strcmp(dir_name, ".") != 0) {
-					const char * to_join [] = {dir_name, entry->d_name};
-					paths_join(new_path, sarrlen(to_join), to_join);
-				} else {
-					strcpy(new_path, entry->d_name);
-				}
+				make_new_path(dir_name, entry->d_name, new_path);
 
 				size_t filename_len = strlen(new_path);
 				size_t new_filename_idx = arraddnindex(*file_list_buffer, filename_len + 1);
@@ -114,12 +114,7 @@ find_recursive(const char * dir_name, int ** file_list, char ** file_list_buffer
 		} else if (entry->d_type == DT_DIR && (arg_mask & ARG_RECUR)) { // directory
 			if (entry->d_name[0] != '.' || (arg_mask & ARG_HIDDEN)) {
 				char new_path [PATH_MAX];
-				if (strcmp(dir_name, ".") != 0) {
-					const char * to_join [] = {dir_name, entry->d_name};
-					paths_join(new_path, sarrlen(to_join), to_join);
-				} else {
-					strcpy(new_path, entry->d_name);
-				}
+				make_new_path(dir_name, entry->d_name, new_path);
 
 				int result = find_recursive(new_path, file_list, file_list_buffer);
 				if (result) return result;
@@ -180,16 +175,18 @@ main(int argc, char ** args) {
 	}
 
 	// create list of files
-	char dir_name_full [PATH_MAX];
-	if (!(arg_mask & ARG_FULL)) {
-		if (chdir(dir_name)) {
-			fprintf(stderr, "failed to change working directory\n");
+	{
+		char dir_name_full [PATH_MAX];
+		if (!(arg_mask & ARG_FULL)) {
+			if (chdir(dir_name)) {
+				fprintf(stderr, "failed to change working directory\n");
+			} else {
+				dir_name = ".";
+			}
 		} else {
-			dir_name = ".";
+			if (realpath(dir_name, dir_name_full))
+				dir_name = dir_name_full;
 		}
-	} else {
-		realpath(dir_name, dir_name_full);
-		dir_name = dir_name_full;
 	}
 
 	int  * og_name_list = NULL;
@@ -232,6 +229,7 @@ main(int argc, char ** args) {
 		return -1;
 	}
 	fclose(file);
+	remove(filename_buf); // delete temporary file
 	buffer[filesize] = '\0';
 
 	char ** new_list = malloc( count_files * sizeof(*new_list) );
@@ -251,7 +249,6 @@ main(int argc, char ** args) {
 
 		if (count_new != count_files) {
 			fprintf(stderr, "line count has been changed, no action can be taken\n");
-			remove(filename_buf);
 			return -1;
 		}
 	}
@@ -268,8 +265,6 @@ main(int argc, char ** args) {
 			}
 		}
 	}
-
-	remove(filename_buf); // delete temporary file
 
 	free(new_list);
 	free(buffer);
