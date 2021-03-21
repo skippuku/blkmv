@@ -11,7 +11,7 @@
 
 static const char EDITOR [] = "nvim";
 
-static const char FILEPATH_PREFIX [] = "/tmp/_bulkmv";
+static const char FILEPATH_PREFIX [] = "/tmp/_blkmv";
 static const char FILEPATH_POSTFIX [] = ".txt";
 
 static const char HELP [] =
@@ -19,7 +19,7 @@ static const char HELP [] =
 "-h     show Hidden files\n"
 "-m     *Make new directories\n"
 "-e     *remove Empty directoties\n"
-"-r     Recursive\n"
+"-R     Recursive\n"
 "-f     show Full paths\n\n"
 "* you can still create and remove directories without\n"
 "  the corresponding option, but you will be prompted to\n"
@@ -39,13 +39,13 @@ typedef struct Filename {
 	char name [256]; // apperantly this is the largest allowed filename
 } Filename;
 
+#define sarrlen(arr) (sizeof(arr)/sizeof(*arr))
+
 #ifdef __GNUC__
 #define UNLIKELY(x) __builtin_expect((x), 0)
 #else
 #define UNLIKELY(x) x
 #endif
-
-#define sarrlen(arr) (sizeof(arr)/sizeof(*arr))
 
 static int
 sort_function(const void * voida, const void * voidb) {
@@ -68,6 +68,8 @@ sort_function(const void * voida, const void * voidb) {
 				return diff;
 		}
 	}
+
+	return (int)*a - (int)*b;
 }
 
 static void
@@ -82,26 +84,55 @@ paths_join(char * dest, int num_paths, const char * paths []) {
 		if (path_index != num_paths-1 && dest[dest_index-1] != '/')
 			dest[dest_index++] = '/';
 	}
+	dest[dest_index] = '\0';
 }
 
-#if 0
+// no i am not proud of the pointer to a pointer to a pointer
+static int
+find_recursive(const char * dir_name, int ** file_list, char ** file_list_buffer) {
+	DIR * directory = opendir(dir_name);
+	struct dirent * entry;
+	if (!directory) {
+		fprintf(stderr, "could not open directory \"%s\"\n", dir_name);
+		return -1;
+	}
 
-int
-main() {
-	static const char * paths [] = {
-		"game", "the_folder/", "other_place", "file.txt"
-	};
+	while ((entry = readdir(directory)) != NULL) {
+		if (entry->d_type == DT_REG) { // regular file
+			if (entry->d_name[0] != '.' || (arg_mask & ARG_HIDDEN)) {
+				char new_path [PATH_MAX];
+				if (strcmp(dir_name, ".") != 0) {
+					const char * to_join [] = {dir_name, entry->d_name};
+					paths_join(new_path, sarrlen(to_join), to_join);
+				} else {
+					strcpy(new_path, entry->d_name);
+				}
 
-	char * joined = malloc(PATH_MAX);
-	paths_join(joined, sarrlen(paths), paths); 
+				size_t filename_len = strlen(new_path);
+				size_t new_filename_idx = arraddnindex(*file_list_buffer, filename_len + 1);
+				strncpy(*file_list_buffer + new_filename_idx, new_path, filename_len);
+				(*file_list_buffer)[new_filename_idx + filename_len] = '\0';
+				arrput(*file_list, (int)new_filename_idx);
+			}
+		} else if (entry->d_type == DT_DIR && (arg_mask & ARG_RECUR)) { // directory
+			if (entry->d_name[0] != '.' || (arg_mask & ARG_HIDDEN)) {
+				char new_path [PATH_MAX];
+				if (strcmp(dir_name, ".") != 0) {
+					const char * to_join [] = {dir_name, entry->d_name};
+					paths_join(new_path, sarrlen(to_join), to_join);
+				} else {
+					strcpy(new_path, entry->d_name);
+				}
 
-	puts(joined);
+				int result = find_recursive(new_path, file_list, file_list_buffer);
+				if (result) return result;
+			}
+		}
+	}
 
-	free(joined);
+	closedir(directory);
 	return 0;
 }
-
-#else
 
 int
 main(int argc, char ** args) {
@@ -116,7 +147,7 @@ main(int argc, char ** args) {
 				case 'h': arg_mask |= ARG_HIDDEN; break;
 				case 'm': arg_mask |= ARG_MKDIR;  break;
 				case 'e': arg_mask |= ARG_EMPTY;  break;
-				case 'r': arg_mask |= ARG_RECUR;  break;
+				case 'R': arg_mask |= ARG_RECUR;  break;
 				case 'f': arg_mask |= ARG_FULL;   break;
 				default:
 					fprintf(stderr, "unknown option '%c'", args[i][o]);
@@ -152,33 +183,24 @@ main(int argc, char ** args) {
 	}
 
 	// create list of files
+	int  * og_name_list = NULL;
+	char * og_name_buffer = NULL;
 	if (chdir(dir_name)) {
-		printf("failed to change working directory.\n");
+		fprintf(stderr, "failed to change working directory\n");
+	} else {
+		dir_name = ".";
+	}
+
+	if (find_recursive(dir_name, &og_name_list, &og_name_buffer)) {
 		return -1;
 	}
-	Filename * og_name_list = NULL;
-	DIR * directory = opendir(".");
-	struct dirent * entry;
-	if (!directory) {
-		printf("could not open directory \"%s\"\n", dir_name);
-		return -1;
-	}
-	while ((entry = readdir(directory)) != NULL) {
-		if (entry->d_type == DT_REG) { // only list actual files
-			if (entry->d_name[0] != '.' || (arg_mask & ARG_HIDDEN)) {
-				Filename * this_file = arraddnptr(og_name_list, 1);
-				strncpy(this_file->name, entry->d_name, sizeof(this_file->name));
-			}
-		}
-	}
-	closedir(directory);
 
 	int count_files = arrlen(og_name_list);
 
 	// create sorted list
 	char ** sorted_list = malloc(count_files * sizeof(*sorted_list));
 	for (int i=0; i < count_files; ++i) {
-		sorted_list[i] = og_name_list[i].name;
+		sorted_list[i] = &og_name_buffer[og_name_list[i]];
 	}
 	qsort(sorted_list, count_files, sizeof(*sorted_list), sort_function);
 
@@ -250,9 +272,8 @@ main(int argc, char ** args) {
 	free(buffer);
 	free(sorted_list);
 	arrfree(og_name_list);
+	arrfree(og_name_buffer);
 
 	return 0;
 }
-
-#endif
 
