@@ -9,7 +9,7 @@
 #define STB_DS_IMPLEMENTATION
 #include "stb_ds.h"
 
-static const char DEFAULT_EDITOR [] = "nvim";
+static const char DEFAULT_EDITOR [] = "$EDITOR";
 
 static const char FILEPATH_PREFIX [] = "/tmp/_blkmv";
 static const char FILEPATH_POSTFIX [] = ".txt";
