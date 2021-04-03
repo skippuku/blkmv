@@ -26,7 +26,7 @@ static const char HELP [] =
 "-d     [d]irectory mode\n"
 ;
 
-enum {
+static enum {
 	ARG_HIDDEN = 0x1,
 	ARG_MKDIR  = 0x2,
 	ARG_EMPTY  = 0x4,
@@ -134,15 +134,44 @@ find_recursive(const char * dir_name, int ** file_list, char ** file_list_buffer
 	return 0;
 }
 
-int
+static int
 get_dir_name(char * ret_dir_name, const char * path) {
 	char * last_slash = strrchr(path, '/');
 	if (last_slash == NULL)
 		return 0;
-	size_t dir_name_size = last_slash - path + 1;
+	size_t dir_name_size = last_slash - path;
 	strncpy(ret_dir_name, path, dir_name_size);
 	ret_dir_name[dir_name_size] = '\0';
 	return dir_name_size;
+}
+
+static int
+remove_empty_recursive(const char * dir_path) {
+	char dir_name [PATH_MAX];
+	int dir_name_size = get_dir_name(dir_name, dir_path);
+	if (dir_name_size == 0) return 0;
+
+	DIR * dir = opendir(dir_name);
+	struct dirent * entry;
+	if (!dir) {
+		fprintf(stderr, "failed to open %s\n", dir_name);
+		return -1;
+	}
+
+	int file_count = 0;
+	while((entry = readdir(dir)) != NULL) {
+		if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0)
+			file_count++;
+	}
+	closedir(dir);
+
+	if (file_count == 0) {
+		remove(dir_name);
+		printf("rmdir %s\n", dir_name);
+		return remove_empty_recursive(dir_name);
+	} else {
+		return 0;
+	}
 }
 
 int
@@ -327,28 +356,8 @@ main(int argc, char ** args) {
 			printf("%s -> %s\n", sorted_list[i], new_list[i]);
 
 			if (arg_mask & ARG_EMPTY) {
-				char dir_name [PATH_MAX];
-				int dir_name_size = get_dir_name(dir_name, sorted_list[i]);
-				if (dir_name_size == 0) continue;
-
-				DIR * dir = opendir(dir_name);
-				struct dirent * entry;
-				if (!dir) {
-					fprintf(stderr, "failed to open %s\n", dir_name);
-					return -1;
-				}
-
-				int file_count = 0;
-				while((entry = readdir(dir)) != NULL) {
-					if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0)
-						file_count++;
-				}
-				closedir(dir);
-
-				if (file_count == 0) {
-					remove(dir_name);
-					printf("rmdir %s\n", dir_name);
-				}
+				int result = remove_empty_recursive(sorted_list[i]);
+				if (result) return result;
 			}
 		}
 	}
