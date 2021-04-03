@@ -135,6 +135,17 @@ find_recursive(const char * dir_name, int ** file_list, char ** file_list_buffer
 }
 
 int
+get_dir_name(char * ret_dir_name, const char * path) {
+	char * last_slash = strrchr(path, '/');
+	if (last_slash == NULL)
+		return 0;
+	size_t dir_name_size = last_slash - path + 1;
+	strncpy(ret_dir_name, path, dir_name_size);
+	ret_dir_name[dir_name_size] = '\0';
+	return dir_name_size;
+}
+
+int
 main(int argc, char ** args) {
 	const char * editor = DEFAULT_EDITOR;
 	char * dir_name = NULL;
@@ -189,17 +200,9 @@ main(int argc, char ** args) {
 	// in case there are two instances running at once
 	char filename_buf [64];
 	int mid_num = 0;
-	int collision = 1;
-	while (collision) {
-		snprintf(filename_buf, sizeof(filename_buf), "%s%i%s", FILEPATH_PREFIX, mid_num, FILEPATH_POSTFIX);
-		FILE * file = fopen(filename_buf, "r");
-		if (!file) {
-			collision = 0;
-		} else {
-			fclose(file);
-			mid_num++;
-		}
-	}
+	do {
+		snprintf(filename_buf, sizeof(filename_buf), "%s%i%s", FILEPATH_PREFIX, mid_num++, FILEPATH_POSTFIX);
+	} while(access(filename_buf, F_OK) == 0);
 
 	// create list of files
 	{
@@ -292,66 +295,59 @@ main(int argc, char ** args) {
 
 	for (int i=0; i < count_files; ++i) {
 		int same = strcmp(sorted_list[i], new_list[i]) == 0;
-		if (!same) {
-			if (new_list[i][0] == '#') {
-				if (remove(sorted_list[i]))
-					printf("(failed) ");
-				printf("rm %s\n", sorted_list[i]);
-			} else {
-				if (arg_mask & ARG_MKDIR) {
-					char dir_name [PATH_MAX];
-					char * last_slash = strrchr(new_list[i], '/');
-					if (last_slash != NULL) {
-						size_t dir_name_size = last_slash - new_list[i] + 1;
-						strncpy(dir_name, new_list[i], dir_name_size);
-						dir_name[dir_name_size] = '\0';
+		if (same) continue;
 
-						struct stat dir_stat;
-						if (stat(dir_name, &dir_stat) == 0 && dir_stat.st_mode & S_IFDIR) {
-							// directory exists, continue
-						} else {
-							char * cmd_buffer = malloc(dir_name_size + 12);
-							sprintf(cmd_buffer, "mkdir -p %s", dir_name);
-							int sys_result = system(cmd_buffer);
-							free(cmd_buffer);
-							if (sys_result != 0) {
-								fprintf(stderr, "failed to create directory %s\n", dir_name);
-								return -1;
-							}
-							printf("mkdir %s\n", dir_name);
+		if (new_list[i][0] == '#') {
+			if (remove(sorted_list[i]))
+				printf("(failed) ");
+			printf("rm %s\n", sorted_list[i]);
+		} else {
+			if (arg_mask & ARG_MKDIR) {
+				char dir_name [PATH_MAX];
+				int dir_name_size = get_dir_name(dir_name, new_list[i]);
+				if (dir_name_size) {
+					struct stat dir_stat;
+					if (stat(dir_name, &dir_stat) == 0 && dir_stat.st_mode & S_IFDIR) {
+						// directory exists, continue
+					} else {
+						char * cmd_buffer = malloc(dir_name_size + 12);
+						sprintf(cmd_buffer, "mkdir -p %s", dir_name);
+						int sys_result = system(cmd_buffer);
+						free(cmd_buffer);
+						if (sys_result != 0) {
+							fprintf(stderr, "failed to create directory %s\n", dir_name);
+							return -1;
 						}
+						printf("mkdir %s\n", dir_name);
 					}
 				}
-				if (rename(sorted_list[i], new_list[i]))
-					printf("(failed) ");
-				printf("%s -> %s\n", sorted_list[i], new_list[i]);
-				
-				if (arg_mask & ARG_EMPTY) {
-					char dir_name [PATH_MAX];
-					char * last_slash = strrchr(sorted_list[i], '/');
-					if (last_slash == NULL) continue;
+			}
+			if (rename(sorted_list[i], new_list[i]))
+				printf("(failed) ");
+			printf("%s -> %s\n", sorted_list[i], new_list[i]);
 
-					size_t dir_name_size = last_slash - sorted_list[i] + 1;
-					strncpy(dir_name, sorted_list[i], dir_name_size);
-					dir_name[dir_name_size] = '\0';
-					DIR * dir = opendir(dir_name);
-					struct dirent * entry;
-					if (!dir) {
-						fprintf(stderr, "failed to open %s\n", dir_name);
-						return -1;
-					}
+			if (arg_mask & ARG_EMPTY) {
+				char dir_name [PATH_MAX];
+				int dir_name_size = get_dir_name(dir_name, sorted_list[i]);
+				if (dir_name_size == 0) continue;
 
-					int file_count = 0;
-					while((entry = readdir(dir)) != NULL) {
-						if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0)
-							file_count++;
-					}
-					closedir(dir);
+				DIR * dir = opendir(dir_name);
+				struct dirent * entry;
+				if (!dir) {
+					fprintf(stderr, "failed to open %s\n", dir_name);
+					return -1;
+				}
 
-					if (file_count == 0) {
-						remove(dir_name);
-						printf("rmdir %s\n", dir_name);
-					}
+				int file_count = 0;
+				while((entry = readdir(dir)) != NULL) {
+					if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0)
+						file_count++;
+				}
+				closedir(dir);
+
+				if (file_count == 0) {
+					remove(dir_name);
+					printf("rmdir %s\n", dir_name);
 				}
 			}
 		}
