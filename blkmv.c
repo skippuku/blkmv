@@ -1,4 +1,21 @@
 
+/*
+	Copyright (C) 2021 cyman
+
+	This program is free software: you can redistribute it and/or modify
+	it under the terms of the GNU General Public License as published by
+	the Free Software Foundation, either version 3 of the License, or
+	(at your option) any later version.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -16,14 +33,14 @@ static const char FILEPATH_PREFIX [] = "/tmp/";
 static const char FILEPATH_POSTFIX [] = ".blkmv";
 
 static const char HELP [] =
-"blkmv v1.0 by cyman\n\n"
+"blkmv v1.1 Copyright (C) 2021 cyman\n\n"
 "usage: blkmv [OPTIONS] DIRECTORY\n"
 "-R     [R]ecursive\n"
 "-h     show [h]idden files\n"
 "-f     show [f]ull paths\n"
 "-m     [m]ake new directories\n"
 "-e     remove [e]mpty directories\n"
-"-d     [d]irectory mode\n"
+"-D     [D]irectory mode\n"
 ;
 
 static enum {
@@ -219,7 +236,7 @@ main(int argc, char ** args) {
 	}
 
 	if (dir_name == NULL) {
-		fputs("no path was passed\n", stderr);
+		fputs("no directory was passed\n", stderr);
 		fputs(HELP, stderr);
 		return 1;
 	}
@@ -353,7 +370,7 @@ main(int argc, char ** args) {
 			}
 			if (rename(sorted_list[i], new_list[i]))
 				printf("(failed) ");
-			printf("%s -> %s\n", sorted_list[i], new_list[i]);
+			printf("mv %s -> %s\n", sorted_list[i], new_list[i]);
 
 			if (arg_mask & ARG_EMPTY) {
 				int result = remove_empty_recursive(sorted_list[i]);
