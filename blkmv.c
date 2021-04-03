@@ -18,10 +18,11 @@ static const char FILEPATH_POSTFIX [] = ".txt";
 static const char HELP [] =
 "blkmv v0.1 by cyman\n\n"
 "usage: blkmv [OPTIONS] DIRECTORY\n"
+"-R     [R]ecursive\n"
 "-h     show [h]idden files\n"
 "-f     show [f]ull paths\n"
-"-R     [R]ecursive\n"
-"-m     [M]ake new directories\n"
+"-m     [m]ake new directories\n"
+"-e     remove [e]mpty directories\n"
 ;
 
 enum {
@@ -291,27 +292,59 @@ main(int argc, char ** args) {
 				if (arg_mask & ARG_MKDIR) {
 					char dir_name [PATH_MAX];
 					char * last_slash = strrchr(new_list[i], '/');
-					size_t dir_name_size = last_slash - new_list[i] + 1;
-					strncpy(dir_name, new_list[i], dir_name_size);
-					dir_name[dir_name_size] = '\0';
+					if (last_slash != NULL) {
+						size_t dir_name_size = last_slash - new_list[i] + 1;
+						strncpy(dir_name, new_list[i], dir_name_size);
+						dir_name[dir_name_size] = '\0';
 
-					struct stat dir_stat;
-					if (stat(dir_name, &dir_stat) == 0 && dir_stat.st_mode & S_IFDIR) {
-						// directory exists, continue
-					} else {
-						char * cmd_buffer = malloc(dir_name_size + 12);
-						sprintf(cmd_buffer, "mkdir -p %s", dir_name);
-						int sys_result = system(cmd_buffer);
-						free(cmd_buffer);
-						if (sys_result != 0) {
-							fprintf(stderr, "failed to create directory %s\n", dir_name);
-							return -1;
+						struct stat dir_stat;
+						if (stat(dir_name, &dir_stat) == 0 && dir_stat.st_mode & S_IFDIR) {
+							// directory exists, continue
+						} else {
+							char * cmd_buffer = malloc(dir_name_size + 12);
+							sprintf(cmd_buffer, "mkdir -p %s", dir_name);
+							int sys_result = system(cmd_buffer);
+							free(cmd_buffer);
+							if (sys_result != 0) {
+								fprintf(stderr, "failed to create directory %s\n", dir_name);
+								return -1;
+							}
 						}
 					}
 				}
 				if ( rename(sorted_list[i], new_list[i]) )
 					printf("(failed) ");
 				printf("%s -> %s\n", sorted_list[i], new_list[i]);
+				
+				if (arg_mask & ARG_EMPTY) {
+					char dir_name [PATH_MAX];
+					char * last_slash = strrchr(sorted_list[i], '/');
+					if (last_slash == NULL) continue;
+
+					size_t dir_name_size = last_slash - sorted_list[i] + 1;
+					strncpy(dir_name, sorted_list[i], dir_name_size);
+					dir_name[dir_name_size] = '\0';
+// xxhere
+					DIR * dir = opendir(dir_name);
+					struct dirent * entry;
+					if (!dir) {
+						fprintf(stderr, "a perplexing error occured\n");
+						fprintf(stderr, "failed to open %s\n", dir_name);
+						return -1;
+					}
+
+					int file_count = 0;
+					while((entry = readdir(dir)) != NULL) {
+						if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0)
+							file_count++;
+					}
+					closedir(dir);
+
+					if (file_count == 0) {
+						remove(dir_name);
+						printf("rmdir %s\n", dir_name);
+					}
+				}
 			}
 		}
 	}
