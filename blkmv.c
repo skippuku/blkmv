@@ -148,10 +148,10 @@ main(int argc, char ** args) {
 					editor = args[++i];
 				} else if (strcmp(&args[i][2], "help") == 0) {
 					fputs(HELP, stderr);
-					return 0;
+					return 1;
 				} else {
 					fprintf(stderr, "unknown option \"%s\"\n", &args[i][2]);
-					return 0;
+					return 1;
 				}
 			} else {
 				for (int o=1; o < len; ++o) {
@@ -163,18 +163,17 @@ main(int argc, char ** args) {
 					case 'f': arg_mask |= ARG_FULL;   break;
 					case 'd': arg_mask |= ARG_DMODE;  break;
 					default:
-						fprintf(stderr, "unknown option '%c'", args[i][o]);
-						break;
+						fprintf(stderr, "unknown option '%c'\n", args[i][o]);
+						return 1;
 					}
 				}
 			}
 		} else {
-			// TODO: make list of files and directories
 			if (dir_name == NULL) {
 				dir_name = args[i];
 			} else {
-				fprintf(stderr, "cannot process more than one path\n");
-				return -1;
+				fprintf(stderr, "cannot process more than one directory\n");
+				return 1;
 			}
 		}
 	}
@@ -182,7 +181,7 @@ main(int argc, char ** args) {
 	if (dir_name == NULL) {
 		fputs("no path was passed\n", stderr);
 		fputs(HELP, stderr);
-		return -1;
+		return 1;
 	}
 
 	// create a temporary file so it can be opened in the editor
@@ -227,7 +226,7 @@ main(int argc, char ** args) {
 
 	if (count_files == 0) {
 		fprintf(stderr, "directory is empty.\n");
-		return 0;
+		return 1;
 	}
 
 	// create sorted list
