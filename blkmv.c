@@ -5,6 +5,7 @@
 
 #include <dirent.h>
 #include <unistd.h>
+#include <sys/stat.h>
 
 #define STB_DS_IMPLEMENTATION
 #include "stb_ds.h"
@@ -20,6 +21,7 @@ static const char HELP [] =
 "-h     show [h]idden files\n"
 "-f     show [f]ull paths\n"
 "-R     [R]ecursive\n"
+"-m     [M]ake new directories\n"
 ;
 
 enum {
@@ -286,6 +288,27 @@ main(int argc, char ** args) {
 					printf("(failed) ");
 				printf("rm %s\n", sorted_list[i]);
 			} else {
+				if (arg_mask & ARG_MKDIR) {
+					char dir_name [PATH_MAX];
+					char * last_slash = strrchr(new_list[i], '/');
+					size_t dir_name_size = last_slash - new_list[i] + 1;
+					strncpy(dir_name, new_list[i], dir_name_size);
+					dir_name[dir_name_size] = '\0';
+
+					struct stat dir_stat;
+					if (stat(dir_name, &dir_stat) == 0 && dir_stat.st_mode & S_IFDIR) {
+						// directory exists, continue
+					} else {
+						char * cmd_buffer = malloc(dir_name_size + 12);
+						sprintf(cmd_buffer, "mkdir -p %s", dir_name);
+						int sys_result = system(cmd_buffer);
+						free(cmd_buffer);
+						if (sys_result != 0) {
+							fprintf(stderr, "failed to create directory %s\n", dir_name);
+							return -1;
+						}
+					}
+				}
 				if ( rename(sorted_list[i], new_list[i]) )
 					printf("(failed) ");
 				printf("%s -> %s\n", sorted_list[i], new_list[i]);
