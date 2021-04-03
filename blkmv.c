@@ -23,6 +23,7 @@ static const char HELP [] =
 "-f     show [f]ull paths\n"
 "-m     [m]ake new directories\n"
 "-e     remove [e]mpty directories\n"
+"-d     [d]irectory mode\n"
 ;
 
 enum {
@@ -31,6 +32,7 @@ enum {
 	ARG_EMPTY  = 0x4,
 	ARG_RECUR  = 0x8,
 	ARG_FULL   = 0x10,
+	ARG_DMODE  = 0x20,
 } arg_mask = 0;
 
 #define sarrlen(arr) (sizeof(arr)/sizeof(*arr))
@@ -100,8 +102,9 @@ find_recursive(const char * dir_name, int ** file_list, char ** file_list_buffer
 		return -1;
 	}
 
+	int open_type = (arg_mask & ARG_DMODE) ? DT_DIR : DT_REG;
 	while ((entry = readdir(directory)) != NULL) {
-		if (entry->d_type == DT_REG) { // regular file
+		if (entry->d_type == open_type) { // regular file
 			if (entry->d_name[0] != '.' || (arg_mask & ARG_HIDDEN)) {
 				char new_path [PATH_MAX];
 				make_new_path(dir_name, entry->d_name, new_path);
@@ -112,7 +115,8 @@ find_recursive(const char * dir_name, int ** file_list, char ** file_list_buffer
 				(*file_list_buffer)[new_filename_idx + filename_len] = '\0';
 				arrput(*file_list, (int)new_filename_idx);
 			}
-		} else if (entry->d_type == DT_DIR && (arg_mask & ARG_RECUR)) { // directory
+		}
+		if (entry->d_type == DT_DIR && (arg_mask & ARG_RECUR)) { // directory
 			if (entry->d_name[0] != '.' || (arg_mask & ARG_HIDDEN)) {
 				char new_path [PATH_MAX];
 				make_new_path(dir_name, entry->d_name, new_path);
@@ -157,6 +161,7 @@ main(int argc, char ** args) {
 					case 'e': arg_mask |= ARG_EMPTY;  break;
 					case 'R': arg_mask |= ARG_RECUR;  break;
 					case 'f': arg_mask |= ARG_FULL;   break;
+					case 'd': arg_mask |= ARG_DMODE;  break;
 					default:
 						fprintf(stderr, "unknown option '%c'", args[i][o]);
 						break;
