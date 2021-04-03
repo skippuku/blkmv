@@ -12,11 +12,11 @@
 
 static const char DEFAULT_EDITOR [] = "$EDITOR";
 
-static const char FILEPATH_PREFIX [] = "/tmp/_blkmv";
-static const char FILEPATH_POSTFIX [] = ".txt";
+static const char FILEPATH_PREFIX [] = "/tmp/";
+static const char FILEPATH_POSTFIX [] = ".blkmv";
 
 static const char HELP [] =
-"blkmv v0.1 by cyman\n\n"
+"blkmv v1.0 by cyman\n\n"
 "usage: blkmv [OPTIONS] DIRECTORY\n"
 "-R     [R]ecursive\n"
 "-h     show [h]idden files\n"
@@ -220,6 +220,11 @@ main(int argc, char ** args) {
 
 	int count_files = arrlen(og_name_list);
 
+	if (count_files == 0) {
+		fprintf(stderr, "directory is empty.\n");
+		return 0;
+	}
+
 	// create sorted list
 	char ** sorted_list = malloc(count_files * sizeof(*sorted_list));
 	for (int i=0; i < count_files; ++i) {
@@ -276,7 +281,7 @@ main(int argc, char ** args) {
 		}
 
 		if (count_new != count_files) {
-			fprintf(stderr, "line count has been changed, no action can be taken\n");
+			fprintf(stderr, "line count was changed, no action can be taken\n");
 			return -1;
 		}
 	}
@@ -285,7 +290,7 @@ main(int argc, char ** args) {
 		int same = strcmp(sorted_list[i], new_list[i]) == 0;
 		if (!same) {
 			if (new_list[i][0] == '#') {
-				if ( remove(sorted_list[i]) )
+				if (remove(sorted_list[i]))
 					printf("(failed) ");
 				printf("rm %s\n", sorted_list[i]);
 			} else {
@@ -309,10 +314,11 @@ main(int argc, char ** args) {
 								fprintf(stderr, "failed to create directory %s\n", dir_name);
 								return -1;
 							}
+							printf("mkdir %s\n", dir_name);
 						}
 					}
 				}
-				if ( rename(sorted_list[i], new_list[i]) )
+				if (rename(sorted_list[i], new_list[i]))
 					printf("(failed) ");
 				printf("%s -> %s\n", sorted_list[i], new_list[i]);
 				
@@ -324,11 +330,9 @@ main(int argc, char ** args) {
 					size_t dir_name_size = last_slash - sorted_list[i] + 1;
 					strncpy(dir_name, sorted_list[i], dir_name_size);
 					dir_name[dir_name_size] = '\0';
-// xxhere
 					DIR * dir = opendir(dir_name);
 					struct dirent * entry;
 					if (!dir) {
-						fprintf(stderr, "a perplexing error occured\n");
 						fprintf(stderr, "failed to open %s\n", dir_name);
 						return -1;
 					}
