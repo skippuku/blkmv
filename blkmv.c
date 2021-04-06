@@ -33,13 +33,14 @@ static const char FILEPATH_PREFIX [] = "/tmp/";
 static const char FILEPATH_POSTFIX [] = ".blkmv";
 
 static const char HELP [] =
-"blkmv v1.1 Copyright (C) 2021 cyman\n\n"
+"blkmv v1.2 Copyright (C) 2021 cyman\n\n"
 "usage: blkmv [OPTIONS] DIRECTORY\n"
 "-R     [R]ecursive\n"
 "-h     show [h]idden files\n"
 "-f     show [f]ull paths\n"
 "-m     [m]ake new directories\n"
 "-e     remove [e]mpty directories\n"
+"-q     [q]uite (no output)\n"
 "-D     [D]irectory mode\n"
 ;
 
@@ -50,6 +51,7 @@ static enum {
 	ARG_RECUR  = 0x8,
 	ARG_FULL   = 0x10,
 	ARG_DMODE  = 0x20,
+	ARG_QUITE  = 0x40,
 } arg_mask = 0;
 
 #define sarrlen(arr) (sizeof(arr)/sizeof(*arr))
@@ -164,6 +166,8 @@ get_dir_name(char * ret_dir_name, const char * path) {
 	return dir_name_size;
 }
 
+#define rprintf(...) if(!(arg_mask&ARG_QUITE))printf(__VA_ARGS__)
+
 static int
 remove_empty_recursive(const char * dir_path) {
 	char dir_name [PATH_MAX];
@@ -186,7 +190,7 @@ remove_empty_recursive(const char * dir_path) {
 
 	if (file_count == 0) {
 		remove(dir_name);
-		printf("rmdir %s\n", dir_name);
+		rprintf("rmdir %s\n", dir_name);
 		return remove_empty_recursive(dir_name);
 	} else {
 		return 0;
@@ -220,7 +224,8 @@ main(int argc, char ** args) {
 					case 'e': arg_mask |= ARG_EMPTY;  break;
 					case 'R': arg_mask |= ARG_RECUR;  break;
 					case 'f': arg_mask |= ARG_FULL;   break;
-					case 'd': arg_mask |= ARG_DMODE;  break;
+					case 'q': arg_mask |= ARG_QUITE;  break;
+					case 'D': arg_mask |= ARG_DMODE;  break;
 					default:
 						fprintf(stderr, "unknown option '%c'\n", args[i][o]);
 						return 1;
@@ -347,8 +352,8 @@ main(int argc, char ** args) {
 
 		if (new_list[i][0] == '#') {
 			if (remove(sorted_list[i]))
-				printf("(failed) ");
-			printf("rm %s\n", sorted_list[i]);
+				rprintf("(failed) ");
+			rprintf("rm %s\n", sorted_list[i]);
 		} else {
 			if (arg_mask & ARG_MKDIR) {
 				char dir_name [PATH_MAX];
@@ -366,13 +371,13 @@ main(int argc, char ** args) {
 							fprintf(stderr, "failed to create directory %s\n", dir_name);
 							return -1;
 						}
-						printf("mkdir %s\n", dir_name);
+						rprintf("mkdir %s\n", dir_name);
 					}
 				}
 			}
 			if (rename(sorted_list[i], new_list[i]))
-				printf("(failed) ");
-			printf("mv %s -> %s\n", sorted_list[i], new_list[i]);
+				rprintf("(failed) ");
+			rprintf("mv %s -> %s\n", sorted_list[i], new_list[i]);
 
 			if (arg_mask & ARG_EMPTY) {
 				int result = remove_empty_recursive(sorted_list[i]);
