@@ -134,14 +134,16 @@ find_recursive(const char * dir_name, int ** file_list, char ** file_list_buffer
 			}
 		}
 		if (entry->d_type == DT_DIR && (arg_mask & ARG_RECUR)) { // directory
-			if (entry->d_name[0] != '.' || (arg_mask & ARG_HIDDEN)) {
-				char new_path [PATH_MAX];
-				make_new_path(dir_name, entry->d_name, new_path);
+			if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+				if (entry->d_name[0] != '.' || (arg_mask & ARG_HIDDEN)) {
+					char new_path [PATH_MAX];
+					make_new_path(dir_name, entry->d_name, new_path);
 
-				int result = find_recursive(new_path, file_list, file_list_buffer);
-				if (result) {
-					closedir(directory);
-					return result;
+					int result = find_recursive(new_path, file_list, file_list_buffer);
+					if (result) {
+						closedir(directory);
+						return result;
+					}
 				}
 			}
 		}
