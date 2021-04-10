@@ -33,7 +33,7 @@ static const char FILEPATH_PREFIX [] = "/tmp/";
 static const char FILEPATH_POSTFIX [] = ".blkmv";
 
 static const char HELP [] =
-"blkmv v1.2 Copyright (C) 2021 cyman\n\n"
+"blkmv v1.3 Copyright (C) 2021 cyman\n\n"
 "usage: blkmv [OPTIONS] DIRECTORY\n"
 "-R     [R]ecursive\n"
 "-h     show [h]idden files\n"
@@ -84,6 +84,22 @@ typedef struct FileInfo {
 		time_t mod_time;
 	};
 } FileInfo;
+
+#define STRING_BUCKET_CAPACITY 65536 // 64 KiB
+typedef struct StringBucket {
+	unsigned int length;
+	char * data;
+} StringBucket;
+
+StringBucket
+StringBucket_create() {
+	StringBucket result;
+
+	result.length = 0;
+	result.data = malloc(STRING_BUCKET_CAPACITY);
+
+	return result;
+}
 
 typedef int (*sort_function_t)(const FileInfo*, const FileInfo*);
 
@@ -202,7 +218,7 @@ make_new_path(const char * dir_name, const char * d_name, char * new_path) {
 }
 
 static int
-find_recursive(const char * dir_name, int ** file_list, char ** file_list_buffer) {
+find_recursive(const char * dir_name, char *** file_list, StringBucket ** file_list_buffer) {
 	DIR * directory = opendir(dir_name);
 	struct dirent * entry;
 	if (!directory) {
@@ -218,10 +234,16 @@ find_recursive(const char * dir_name, int ** file_list, char ** file_list_buffer
 				make_new_path(dir_name, entry->d_name, new_path);
 
 				size_t filename_len = strlen(new_path);
-				size_t new_filename_idx = arraddnindex(*file_list_buffer, filename_len + 1);
-				strncpy(*file_list_buffer + new_filename_idx, new_path, filename_len);
-				(*file_list_buffer)[new_filename_idx + filename_len] = '\0';
-				arrput(*file_list, (int)new_filename_idx);
+				StringBucket * bucket = &arrlast(*file_list_buffer);
+				if (bucket->length + filename_len + 1 > STRING_BUCKET_CAPACITY) {
+					arrput(*file_list_buffer, StringBucket_create());
+					bucket = &arrlast(*file_list_buffer);
+				}
+				char * new_filename_loc = &bucket->data[bucket->length];
+				strcpy(new_filename_loc, new_path);
+				bucket->length += filename_len + 1;
+
+				arrput(*file_list, new_filename_loc);
 			}
 		}
 		if (entry->d_type == DT_DIR && (arg_mask & ARG_RECUR)) {
@@ -399,8 +421,9 @@ main(int argc, char ** args) {
 		}
 	}
 
-	int  * og_name_list = NULL;
-	char * og_name_buffer = NULL;
+	char        ** og_name_list = NULL;
+	StringBucket * og_name_buffer = NULL;
+	arrput(og_name_buffer, StringBucket_create());
 	if (find_recursive(dir_name, &og_name_list, &og_name_buffer)) {
 		return -1;
 	}
@@ -423,7 +446,7 @@ main(int argc, char ** args) {
 		}
 
 		FileInfo new;
-		new.name = &og_name_buffer[og_name_list[i]];
+		new.name = og_name_list[i];
 		new.nslashes = count_slashes(new.name);
 		if (temp_sort_function == sort_function_size || temp_sort_function == sort_function_mod) {
 			struct stat new_stat;
@@ -530,6 +553,10 @@ main(int argc, char ** args) {
 				if (result) return result;
 			}
 		}
+	}
+
+	for (int i=arrlen(og_name_buffer)-1; i >= 0; --i) {
+		free(og_name_buffer[i].data);
 	}
 
 	free(new_list);
