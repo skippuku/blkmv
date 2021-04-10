@@ -83,15 +83,22 @@ count_slashes(const char * str) {
 }
 
 static int gSortDirection = 1;
+static int (*sort_function_child)(const FileInfo*, const FileInfo*);
+static int (*sort_function_type_next)(const FileInfo*, const FileInfo*);
 
 static int
-sort_function_name(const void * voida, const void * voidb) {
+sort_function_prime(const void * voida, const void * voidb) {
 	const FileInfo * info_a = (FileInfo*)voida;
 	const FileInfo * info_b = (FileInfo*)voidb;
 
 	int slash_diff = info_b->nslashes - info_a->nslashes;
 	if (slash_diff) return slash_diff;
 
+	return sort_function_child(info_a, info_b);
+}
+
+static int
+sort_function_name(const FileInfo * info_a, const FileInfo * info_b) {
 	const char * a = info_a->name;
 	const char * b = info_b->name;
 	while (*a != '\0' && *b != '\0') {
@@ -117,14 +124,24 @@ sort_function_name(const void * voida, const void * voidb) {
 }
 
 static int
-sort_function_size(const void * voida, const void * voidb) {
-	const FileInfo * info_a = (FileInfo*)voida;
-	const FileInfo * info_b = (FileInfo*)voidb;
+sort_function_type(const FileInfo * info_a, const FileInfo * info_b) {
+	const char * a = strrchr(info_a->name, '.');
+	const char * b = strrchr(info_b->name, '.');
+	if (a && b) {
+		while (*a != '\0' && *b != '\0') {
+			int diff = (int)*a - (int)*b;
+			if (diff == 0)
+				a++, b++;
+			else
+				return diff * gSortDirection;
+		}
+	}
 
-	int slash_diff = info_b->nslashes - info_a->nslashes;
-	if (slash_diff) return slash_diff;
+	return sort_function_type_next(info_a, info_b);
+}
 
-	// doing this in case files are larger than 2 gibibytes
+static int
+sort_function_size(const FileInfo * info_a, const FileInfo * info_b) {
 	if (info_a->size > info_b->size)
 		return gSortDirection;
 	else if (info_a->size < info_b->size)
@@ -134,13 +151,7 @@ sort_function_size(const void * voida, const void * voidb) {
 }
 
 static int
-sort_function_mod(const void * voida, const void * voidb) {
-	const FileInfo * info_a = (FileInfo*)voida;
-	const FileInfo * info_b = (FileInfo*)voidb;
-
-	int slash_diff = info_b->nslashes - info_a->nslashes;
-	if (slash_diff) return slash_diff;
-
+sort_function_mod(const FileInfo * info_a, const FileInfo * info_b) {
 	if (info_a->mod_time < info_b->mod_time)
 		return gSortDirection;
 	else if (info_a->mod_time > info_b->mod_time)
@@ -185,7 +196,7 @@ find_recursive(const char * dir_name, int ** file_list, char ** file_list_buffer
 
 	int open_type = (arg_mask & ARG_DMODE) ? DT_DIR : DT_REG;
 	while ((entry = readdir(directory)) != NULL) {
-		if (entry->d_type == open_type) { // regular file
+		if (entry->d_type == open_type) {
 			if (entry->d_name[0] != '.' || (arg_mask & ARG_HIDDEN)) {
 				char new_path [PATH_MAX];
 				make_new_path(dir_name, entry->d_name, new_path);
@@ -197,7 +208,7 @@ find_recursive(const char * dir_name, int ** file_list, char ** file_list_buffer
 				arrput(*file_list, (int)new_filename_idx);
 			}
 		}
-		if (entry->d_type == DT_DIR && (arg_mask & ARG_RECUR)) { // directory
+		if (entry->d_type == DT_DIR && (arg_mask & ARG_RECUR)) {
 			if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
 				if (entry->d_name[0] != '.' || (arg_mask & ARG_HIDDEN)) {
 					char new_path [PATH_MAX];
@@ -259,33 +270,51 @@ remove_empty_recursive(const char * dir_path) {
 	}
 }
 
+typedef int (*sort_function_t)(const FileInfo*, const FileInfo*);
+sort_function_t
+get_sort_function_from_string(const char * str) {
+	if (strcmp(str, "name") == 0) {
+		return sort_function_name;
+	} else if (strcmp(str, "size") == 0) {
+		return sort_function_size;
+	} else if (strcmp(str, "date") == 0) {
+		return sort_function_mod;
+	} else {
+		fprintf(stderr, "unknown sort order \"%s\".\n", str);
+		return NULL;
+	}
+}
+
 int
 main(int argc, char ** args) {
 	const char * editor = DEFAULT_EDITOR;
 	char * dir_name = NULL;
 
-	int (*sort_function)(const void *, const void *) = sort_function_name;
+	// defaults
+	sort_function_child = sort_function_name;
+	sort_function_type_next = sort_function_name;
+
 	// parse arguments
 	for (int i=1; i < argc; ++i) {
 		if (args[i][0] == '-') {
-			int len = strlen(args[i]);
 			if (args[i][1] == '-') {
 				if (strcmp(&args[i][2], "with") == 0 || strcmp(&args[i][2], "use") == 0) {
 					editor = args[++i];
 				} else if (strcmp(&args[i][2], "order") == 0) {
 					i++;
-					if (strcmp(args[i], "name") == 0) {
-						sort_function = sort_function_name;
-					} else if (strcmp(args[i], "size") == 0) {
-						sort_function = sort_function_size;
-					} else if (strcmp(args[i], "mod") == 0 || strcmp(args[i], "date") == 0) {
-						sort_function = sort_function_mod;
-					} else if (strcmp(args[i], "type") == 0) {
-						fprintf(stderr, "unsupported right now.\n");
-						return 1;
+					if (strncmp(args[i], "type", 4) == 0) {
+						sort_function_child = sort_function_type;
+						if (args[i][4] == ':') {
+							sort_function_type_next = get_sort_function_from_string(&args[i][5]);
+							if (sort_function_type_next == NULL) {
+								return 1;
+							}
+						}
 					} else {
-						fprintf(stderr, "unknown order \"%s\"\n", args[i]);
-						return 1;
+						sort_function_child = get_sort_function_from_string(args[i]);
+						if (sort_function_child == NULL) {
+							return 1;
+						}
 					}
 				} else if (strcmp(&args[i][2], "reverse") == 0) {
 					gSortDirection = -1;
@@ -297,6 +326,7 @@ main(int argc, char ** args) {
 					return 1;
 				}
 			} else {
+				int len = strlen(args[i]);
 				for (int o=1; o < len; ++o) {
 					switch (args[i][o]) {
 					case 'h': arg_mask |= ARG_HIDDEN; break;
@@ -368,22 +398,28 @@ main(int argc, char ** args) {
 	// create sorted list
 	FileInfo * sorted_list = malloc(count_files * sizeof(*sorted_list));
 	for (int i=0; i < count_files; ++i) {
+		sort_function_t temp_sort_function;
+		if (sort_function_child == sort_function_type) {
+			temp_sort_function = sort_function_type_next;
+		} else {
+			temp_sort_function = sort_function_child;
+		}
+
 		FileInfo new;
 		new.name = &og_name_buffer[og_name_list[i]];
 		new.nslashes = count_slashes(new.name);
-		if (sort_function == sort_function_name) {
-		} else {
+		if (temp_sort_function == sort_function_size || temp_sort_function == sort_function_mod) {
 			struct stat new_stat;
 			stat(new.name, &new_stat);
-			if (sort_function == sort_function_size) {
+			if (temp_sort_function == sort_function_size) {
 				new.size = new_stat.st_size;
-			} else if (sort_function == sort_function_mod) {
+			} else if (temp_sort_function == sort_function_mod) {
 				new.mod_time = new_stat.st_mtime;
 			}
 		}
 		sorted_list[i] = new;
 	}
-	qsort(sorted_list, count_files, sizeof(*sorted_list), sort_function);
+	qsort(sorted_list, count_files, sizeof(*sorted_list), sort_function_prime);
 
 	// print all the names to the file
 	FILE * file = fopen(filename_buf, "w");
