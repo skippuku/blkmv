@@ -40,7 +40,7 @@ static const char HELP [] =
 "-f     show [f]ull paths\n"
 "-m     [m]ake new directories\n"
 "-e     remove [e]mpty directories\n"
-"-q     [q]uite (no output)\n"
+"-q     [q]uiet (no output)\n"
 "-D     [D]irectory mode\n"
 ;
 
@@ -51,7 +51,7 @@ static enum {
 	ARG_RECUR  = 0x8,
 	ARG_FULL   = 0x10,
 	ARG_DMODE  = 0x20,
-	ARG_QUITE  = 0x40,
+	ARG_QUIET  = 0x40,
 } arg_mask = 0;
 
 #define sarrlen(arr) (sizeof(arr)/sizeof(*arr))
@@ -62,9 +62,38 @@ static enum {
 #define UNLIKELY(x) x
 #endif
 
+typedef struct FileInfo {
+	const char * name;
+	union {
+		int nslashes;
+		size_t size;
+		time_t mod_time;
+	};
+} FileInfo;
+
 static int
-sort_function(const void * voida, const void * voidb) {
-	const char *a = *(const char**)voida, *b = *(const char**)voidb;
+count_slashes(const char * str) {
+	int result = 0;
+	while (*str != '\0') {
+		if (*str == '/')
+			result++;
+		str++;
+	}
+	return result;
+}
+
+static int gSortDirection = 1;
+
+static int
+sort_function_name(const void * voida, const void * voidb) {
+	const FileInfo * info_a = (FileInfo*)voida;
+	const FileInfo * info_b = (FileInfo*)voidb;
+
+	int slash_diff = info_b->nslashes - info_a->nslashes;
+	if (slash_diff) return slash_diff;
+
+	const char * a = info_a->name;
+	const char * b = info_b->name;
 	while (*a != '\0' && *b != '\0') {
 		if (UNLIKELY(*a <= '9' && *a >= '0' && *b <= '9' && *b >= '0')) {
 			char *a_num_end, *b_num_end;
@@ -72,7 +101,7 @@ sort_function(const void * voida, const void * voidb) {
 			long b_num = strtol(b, &b_num_end, 10);
 			long diff = a_num - b_num;
 			if (diff != 0)
-				return diff;
+				return diff * gSortDirection;
 			else
 				a = a_num_end, b = b_num_end;
 		} else {
@@ -80,11 +109,21 @@ sort_function(const void * voida, const void * voidb) {
 			if (diff == 0)
 				a++, b++;
 			else
-				return diff;
+				return diff * gSortDirection;
 		}
 	}
 
-	return (int)*a - (int)*b;
+	return ((int)*a - (int)*b) * gSortDirection;
+}
+
+static int
+sort_function_size(const void * voida, const void * voidb) {
+	return 1;
+}
+
+static int
+sort_function_mod(const void * voida, const void * voidb) {
+	return 1;
 }
 
 static void
@@ -166,7 +205,7 @@ get_dir_name(char * ret_dir_name, const char * path) {
 	return dir_name_size;
 }
 
-#define rprintf(...) if(!(arg_mask&ARG_QUITE))printf(__VA_ARGS__)
+#define rprintf(...) if(!(arg_mask&ARG_QUIET))printf(__VA_ARGS__)
 
 static int
 remove_empty_recursive(const char * dir_path) {
@@ -202,6 +241,7 @@ main(int argc, char ** args) {
 	const char * editor = DEFAULT_EDITOR;
 	char * dir_name = NULL;
 
+	int (*sort_function)(const void *, const void *) = sort_function_name;
 	// parse arguments
 	for (int i=1; i < argc; ++i) {
 		if (args[i][0] == '-') {
@@ -209,6 +249,17 @@ main(int argc, char ** args) {
 			if (args[i][1] == '-') {
 				if (strcmp(&args[i][2], "with") == 0 || strcmp(&args[i][2], "use") == 0) {
 					editor = args[++i];
+				} else if (strcmp(&args[i][2], "order") == 0) {
+					i++;
+					if (strcmp(args[i], "name") == 0) {
+						sort_function = sort_function_name;
+					} else if (strcmp(args[i], "size") == 0) {
+					} else if (strcmp(args[i], "mod") == 0) {
+					} else if (strcmp(args[i], "type") == 0) {
+					} else {
+						fprintf(stderr, "unknown order \"%s\"\n", args[i]);
+						return 1;
+					}
 				} else if (strcmp(&args[i][2], "help") == 0) {
 					fputs(HELP, stderr);
 					return 1;
@@ -224,7 +275,7 @@ main(int argc, char ** args) {
 					case 'e': arg_mask |= ARG_EMPTY;  break;
 					case 'R': arg_mask |= ARG_RECUR;  break;
 					case 'f': arg_mask |= ARG_FULL;   break;
-					case 'q': arg_mask |= ARG_QUITE;  break;
+					case 'q': arg_mask |= ARG_QUIET;  break;
 					case 'D': arg_mask |= ARG_DMODE;  break;
 					default:
 						fprintf(stderr, "unknown option '%c'\n", args[i][o]);
@@ -286,16 +337,29 @@ main(int argc, char ** args) {
 	}
 
 	// create sorted list
-	char ** sorted_list = malloc(count_files * sizeof(*sorted_list));
+	FileInfo * sorted_list = malloc(count_files * sizeof(*sorted_list));
 	for (int i=0; i < count_files; ++i) {
-		sorted_list[i] = &og_name_buffer[og_name_list[i]];
+		FileInfo new;
+		new.name = &og_name_buffer[og_name_list[i]];
+		if (sort_function == sort_function_name) {
+			new.nslashes = count_slashes(new.name);
+		} else {
+			struct stat new_stat;
+			stat(new.name, &new_stat);
+			if (sort_function == sort_function_size) {
+				new.size = new_stat.st_size;
+			} else if (sort_function == sort_function_mod) {
+				new.mod_time = new_stat.st_mtime;
+			}
+		}
+		sorted_list[i] = new;
 	}
 	qsort(sorted_list, count_files, sizeof(*sorted_list), sort_function);
 
 	// print all the names to the file
 	FILE * file = fopen(filename_buf, "w");
 	for (int i=0; i < count_files; ++i) {
-		fprintf(file, "%s\n", sorted_list[i]);
+		fprintf(file, "%s\n", sorted_list[i].name);
 	}
 	fclose(file);
 
@@ -347,13 +411,13 @@ main(int argc, char ** args) {
 	}
 
 	for (int i=0; i < count_files; ++i) {
-		int same = strcmp(sorted_list[i], new_list[i]) == 0;
+		int same = strcmp(sorted_list[i].name, new_list[i]) == 0;
 		if (same) continue;
 
 		if (new_list[i][0] == '#') {
-			if (remove(sorted_list[i]))
+			if (remove(sorted_list[i].name))
 				rprintf("(failed) ");
-			rprintf("rm %s\n", sorted_list[i]);
+			rprintf("rm %s\n", sorted_list[i].name);
 		} else {
 			if (arg_mask & ARG_MKDIR) {
 				char dir_name [PATH_MAX];
@@ -375,12 +439,12 @@ main(int argc, char ** args) {
 					}
 				}
 			}
-			if (rename(sorted_list[i], new_list[i]))
+			if (rename(sorted_list[i].name, new_list[i]))
 				rprintf("(failed) ");
-			rprintf("mv %s -> %s\n", sorted_list[i], new_list[i]);
+			rprintf("mv %s -> %s\n", sorted_list[i].name, new_list[i]);
 
 			if (arg_mask & ARG_EMPTY) {
-				int result = remove_empty_recursive(sorted_list[i]);
+				int result = remove_empty_recursive(sorted_list[i].name);
 				if (result) return result;
 			}
 		}
