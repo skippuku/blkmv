@@ -44,6 +44,20 @@ static const char HELP [] =
 "-D     [D]irectory mode\n"
 ;
 
+static const char HELP_EXTRA [] =
+"\n"
+"--with <editor>\n"
+"    Use <editor> to edit the file list.\n"
+"--order <name/date/size/type[:name/date/size]>\n"
+"    Order files by name (the default), modification date\n"
+"    (newest first), size (smallest first), or file type.\n"
+"    The type option allows another optional option\n"
+"    specified after a ':' for specifying ordering used\n"
+"    within file types (default is name).\n"
+"--reverse\n"
+"    Reverses file ordering.\n"
+;
+
 static enum {
 	ARG_HIDDEN = 0x1,
 	ARG_MKDIR  = 0x2,
@@ -71,6 +85,8 @@ typedef struct FileInfo {
 	};
 } FileInfo;
 
+typedef int (*sort_function_t)(const FileInfo*, const FileInfo*);
+
 static int
 count_slashes(const char * str) {
 	int result = 0;
@@ -83,8 +99,8 @@ count_slashes(const char * str) {
 }
 
 static int gSortDirection = 1;
-static int (*sort_function_child)(const FileInfo*, const FileInfo*);
-static int (*sort_function_type_next)(const FileInfo*, const FileInfo*);
+static sort_function_t sort_function_child;
+static sort_function_t sort_function_type_next;
 
 static int
 sort_function_prime(const void * voida, const void * voidb) {
@@ -270,7 +286,6 @@ remove_empty_recursive(const char * dir_path) {
 	}
 }
 
-typedef int (*sort_function_t)(const FileInfo*, const FileInfo*);
 sort_function_t
 get_sort_function_from_string(const char * str) {
 	if (strcmp(str, "name") == 0) {
@@ -320,6 +335,7 @@ main(int argc, char ** args) {
 					gSortDirection = -1;
 				} else if (strcmp(&args[i][2], "help") == 0) {
 					fputs(HELP, stderr);
+					fputs(HELP_EXTRA, stderr);
 					return 1;
 				} else {
 					fprintf(stderr, "unknown option \"%s\"\n", &args[i][2]);
@@ -355,6 +371,7 @@ main(int argc, char ** args) {
 	if (dir_name == NULL) {
 		fputs("no directory was passed\n", stderr);
 		fputs(HELP, stderr);
+		fputs("try \"blkmv --help\" for additional information.\n", stderr);
 		return 1;
 	}
 
