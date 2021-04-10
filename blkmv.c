@@ -64,8 +64,8 @@ static enum {
 
 typedef struct FileInfo {
 	const char * name;
+	int nslashes;
 	union {
-		int nslashes;
 		size_t size;
 		time_t mod_time;
 	};
@@ -118,12 +118,35 @@ sort_function_name(const void * voida, const void * voidb) {
 
 static int
 sort_function_size(const void * voida, const void * voidb) {
-	return 1;
+	const FileInfo * info_a = (FileInfo*)voida;
+	const FileInfo * info_b = (FileInfo*)voidb;
+
+	int slash_diff = info_b->nslashes - info_a->nslashes;
+	if (slash_diff) return slash_diff;
+
+	// doing this in case files are larger than 2 gibibytes
+	if (info_a->size > info_b->size)
+		return gSortDirection;
+	else if (info_a->size < info_b->size)
+		return -gSortDirection;
+	else
+		return 0;
 }
 
 static int
 sort_function_mod(const void * voida, const void * voidb) {
-	return 1;
+	const FileInfo * info_a = (FileInfo*)voida;
+	const FileInfo * info_b = (FileInfo*)voidb;
+
+	int slash_diff = info_b->nslashes - info_a->nslashes;
+	if (slash_diff) return slash_diff;
+
+	if (info_a->mod_time < info_b->mod_time)
+		return gSortDirection;
+	else if (info_a->mod_time > info_b->mod_time)
+		return -gSortDirection;
+	else
+		return 0;
 }
 
 static void
@@ -254,12 +277,18 @@ main(int argc, char ** args) {
 					if (strcmp(args[i], "name") == 0) {
 						sort_function = sort_function_name;
 					} else if (strcmp(args[i], "size") == 0) {
-					} else if (strcmp(args[i], "mod") == 0) {
+						sort_function = sort_function_size;
+					} else if (strcmp(args[i], "mod") == 0 || strcmp(args[i], "date") == 0) {
+						sort_function = sort_function_mod;
 					} else if (strcmp(args[i], "type") == 0) {
+						fprintf(stderr, "unsupported right now.\n");
+						return 1;
 					} else {
 						fprintf(stderr, "unknown order \"%s\"\n", args[i]);
 						return 1;
 					}
+				} else if (strcmp(&args[i][2], "reverse") == 0) {
+					gSortDirection = -1;
 				} else if (strcmp(&args[i][2], "help") == 0) {
 					fputs(HELP, stderr);
 					return 1;
@@ -341,8 +370,8 @@ main(int argc, char ** args) {
 	for (int i=0; i < count_files; ++i) {
 		FileInfo new;
 		new.name = &og_name_buffer[og_name_list[i]];
+		new.nslashes = count_slashes(new.name);
 		if (sort_function == sort_function_name) {
-			new.nslashes = count_slashes(new.name);
 		} else {
 			struct stat new_stat;
 			stat(new.name, &new_stat);
