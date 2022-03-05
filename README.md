@@ -1,3 +1,6 @@
+# Warning! Known issue can cause data loss!
+blkmv currently fucks up royaly if you try to use it on directories with spaces in them... I will fix this eventually. Luckily, it doesn't seem like anyone is using this besides me right now. If you're reading this I wouldn't actually recommend using this right now for this reason. In the future I will have better testing to make sure things like this can't happen!
+
 # blkmv
 blkmv is a command line utility for reorganizing and renaming files using a text editor. Currently blkmv only supports GNU/Linux systems, but it might accidentally work on other unix-like systems. blkmv is inspered by the bulk rename tool in ranger. I find ranger to be slow and bulkrename was the only thing I actually used from ranger, so I wrote my own version and then added some features.
 
