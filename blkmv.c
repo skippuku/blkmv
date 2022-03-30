@@ -500,7 +500,7 @@ main(int argc, char ** args) {
 		char * p = buffer;
 		new_list[count_new] = p;
 		while (*p != '\0') {
-			if (*p == '\n') {
+			if (*p == '\n' || *p == '\r') {
 				*p = '\0'; // replace newline with null
 				count_new++;
 				if (count_new < count_files)
