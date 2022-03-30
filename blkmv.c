@@ -1,4 +1,3 @@
-
 /*
 Copyright (C) 2021 cyman
 
@@ -533,7 +532,7 @@ main(int argc, char ** args) {
 						// directory exists, continue
 					} else {
 						char * cmd_buffer = malloc(dir_name_size + 12);
-						sprintf(cmd_buffer, "mkdir -p %s", dir_name);
+						sprintf(cmd_buffer, "mkdir -p \"%s\"", dir_name);
 						int sys_result = system(cmd_buffer);
 						free(cmd_buffer);
 						if (sys_result != 0) {
@@ -567,4 +566,3 @@ main(int argc, char ** args) {
 
 	return 0;
 }
-
