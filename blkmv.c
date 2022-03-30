@@ -172,9 +172,9 @@ sort_function_type(const FileInfo * info_a, const FileInfo * info_b) {
 
 static int
 sort_function_size(const FileInfo * info_a, const FileInfo * info_b) {
-	if (info_a->size > info_b->size)
+	if (info_a->size < info_b->size)
 		return gSortDirection;
-	else if (info_a->size < info_b->size)
+	else if (info_a->size > info_b->size)
 		return -gSortDirection;
 	else
 		return 0;
