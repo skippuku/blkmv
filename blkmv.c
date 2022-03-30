@@ -1,19 +1,19 @@
 
 /*
-	Copyright (C) 2021 cyman
+Copyright (C) 2021 cyman
 
-	This program is free software: you can redistribute it and/or modify
-	it under the terms of the GNU General Public License as published by
-	the Free Software Foundation, either version 3 of the License, or
-	(at your option) any later version.
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
 
-	This program is distributed in the hope that it will be useful,
-	but WITHOUT ANY WARRANTY; without even the implied warranty of
-	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-	GNU General Public License for more details.
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
 
-	You should have received a copy of the GNU General Public License
-	along with this program.  If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 
 #include <stdlib.h>
@@ -46,8 +46,6 @@ static const char HELP [] =
 
 static const char HELP_EXTRA [] =
 "\n"
-"--with <editor>\n"
-"    Use <editor> to edit the file list.\n"
 "--order <name/date/size/type[:name/date/size]>\n"
 "    Order files by name (the default), modification date\n"
 "    (newest first), size (smallest first), or file type.\n"
@@ -325,6 +323,10 @@ get_sort_function_from_string(const char * str) {
 int
 main(int argc, char ** args) {
 	const char * editor = DEFAULT_EDITOR;
+	if (editor[0] == '$' && !getenv(editor + 1)) {
+		fprintf(stderr, "no environment variable: '%s'\n", editor + 1);
+		return 1;
+	}
 	char * dir_name = NULL;
 
 	// defaults
@@ -335,9 +337,7 @@ main(int argc, char ** args) {
 	for (int i=1; i < argc; ++i) {
 		if (args[i][0] == '-') {
 			if (args[i][1] == '-') {
-				if (strcmp(&args[i][2], "with") == 0 || strcmp(&args[i][2], "use") == 0) {
-					editor = args[++i];
-				} else if (strcmp(&args[i][2], "order") == 0) {
+				if (strcmp(&args[i][2], "order") == 0) {
 					i++;
 					if (strncmp(args[i], "type", 4) == 0) {
 						sort_function_child = sort_function_type;
