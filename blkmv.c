@@ -298,7 +298,7 @@ remove_empty_recursive(const char * dir_path) {
 
 	if (file_count == 0) {
 		remove(dir_name);
-		rprintf("rmdir %s\n", dir_name);
+		rprintf("rm -r '%s'\n", dir_name);
 		return remove_empty_recursive(dir_name);
 	} else {
 		return 0;
@@ -521,7 +521,7 @@ main(int argc, char ** args) {
 		if (new_list[i][0] == '#') {
 			if (remove(sorted_list[i].name))
 				rprintf("(failed) ");
-			rprintf("rm %s\n", sorted_list[i].name);
+			rprintf("rm '%s'\n", sorted_list[i].name);
 		} else {
 			if (arg_mask & ARG_MKDIR) {
 				char dir_name [PATH_MAX];
@@ -532,20 +532,20 @@ main(int argc, char ** args) {
 						// directory exists, continue
 					} else {
 						char * cmd_buffer = malloc(dir_name_size + 12);
-						sprintf(cmd_buffer, "mkdir -p \"%s\"", dir_name);
+						sprintf(cmd_buffer, "mkdir -p '%s'", dir_name);
 						int sys_result = system(cmd_buffer);
-						free(cmd_buffer);
 						if (sys_result != 0) {
 							fprintf(stderr, "failed to create directory %s\n", dir_name);
 							return -1;
 						}
-						rprintf("mkdir %s\n", dir_name);
+						rprintf("%s\n", cmd_buffer);
+						free(cmd_buffer);
 					}
 				}
 			}
 			if (rename(sorted_list[i].name, new_list[i]))
 				rprintf("(failed) ");
-			rprintf("mv %s -> %s\n", sorted_list[i].name, new_list[i]);
+			rprintf("mv '%s' '%s'\n", sorted_list[i].name, new_list[i]);
 
 			if (arg_mask & ARG_EMPTY) {
 				int result = remove_empty_recursive(sorted_list[i].name);
