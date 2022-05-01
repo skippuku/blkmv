@@ -325,6 +325,49 @@ get_sort_function_from_string(const char * str) {
 }
 
 int
+do_move(const char * old_name, const char * new_name) {
+	int same = strcmp(old_name, new_name) == 0;
+	if (same) return 0;
+
+	if (new_name[0] == '#') {
+		int error = remove(old_name);
+		char arg [PATH_MAX];
+		get_bash_path(arg, old_name);
+		rprintf("rm %s\n", arg);
+		if (error) rprintf(" # FAILED!");
+	} else {
+		char dir_name [PATH_MAX];
+		int dir_name_size = get_dir_name(dir_name, new_name);
+		if (dir_name_size) {
+			struct stat dir_stat;
+			if (!(stat(dir_name, &dir_stat) == 0 && dir_stat.st_mode & S_IFDIR)) {
+				char * cmd_buffer = malloc(dir_name_size + 12);
+				char arg [PATH_MAX];
+				get_bash_path(arg, dir_name);
+				sprintf(cmd_buffer, "mkdir -p %s", arg);
+				int sys_result = system(cmd_buffer);
+				if (sys_result != 0) {
+					fprintf(stderr, "failed to create directory '%s'\n", dir_name);
+					return -1;
+				}
+				rprintf("%s\n", cmd_buffer);
+				free(cmd_buffer);
+			}
+		}
+		int error = rename(old_name, new_name);
+		char a1 [PATH_MAX], a2 [PATH_MAX];
+		get_bash_path(a1, old_name);
+		get_bash_path(a2, new_name);
+		rprintf("mv %s %s\n", a1, a2);
+		if (error) rprintf(" # FAILED!");
+
+		int result = remove_empty_recursive(old_name);
+		if (result) return result;
+	}
+	return 0;
+}
+
+int
 main(int argc, char ** args) {
 	const char * editor = DEFAULT_EDITOR;
 	if (editor[0] == '$' && !getenv(editor + 1)) {
@@ -418,11 +461,11 @@ main(int argc, char ** args) {
 				dir_name = ".";
 			}
 		} else {
-			if (realpath(dir_name, dir_name_full))
+			if (realpath(dir_name, dir_name_full)) {
 				dir_name = dir_name_full;
+			}
 		}
 	}
-
 	char        ** og_name_list = NULL;
 	StringBucket * og_name_buffer = NULL;
 	arrput(og_name_buffer, StringBucket_create());
@@ -431,7 +474,6 @@ main(int argc, char ** args) {
 	}
 
 	int count_files = arrlen(og_name_list);
-
 	if (count_files == 0) {
 		fprintf(stderr, "directory is empty.\n");
 		return 1;
@@ -496,17 +538,19 @@ main(int argc, char ** args) {
 	remove(filename_buf); // delete temporary file
 	buffer[filesize] = '\0';
 
-	char ** new_list = malloc( count_files * sizeof(*new_list) );
+	// get new names
+	char ** new_names = malloc( count_files * sizeof(*new_names) );
 	{
 		int count_new = 0;
 		char * p = buffer;
-		new_list[count_new] = p;
+		new_names[count_new] = p;
 		while (*p != '\0') {
-			if (*p == '\n' || *p == '\r') {
+			if (*p == '\n') {
 				*p = '\0'; // replace newline with null
 				count_new++;
-				if (count_new < count_files)
-					new_list[count_new] = p+1;
+				if (count_new < count_files) {
+					new_names[count_new] = p+1;
+				}
 			}
 			p++;
 		}
@@ -517,54 +561,15 @@ main(int argc, char ** args) {
 		}
 	}
 
-	for (int i=0; i < count_files; ++i) {
-		int same = strcmp(sorted_list[i].name, new_list[i]) == 0;
-		if (same) continue;
-
-		if (new_list[i][0] == '#') {
-			int error = remove(sorted_list[i].name);
-			char arg [PATH_MAX];
-			get_bash_path(arg, sorted_list[i].name);
-			rprintf("rm %s\n", arg);
-			if (error) rprintf(" # FAILED!");
-		} else {
-			char dir_name [PATH_MAX];
-			int dir_name_size = get_dir_name(dir_name, new_list[i]);
-			if (dir_name_size) {
-				struct stat dir_stat;
-				if (stat(dir_name, &dir_stat) == 0 && dir_stat.st_mode & S_IFDIR) {
-					// directory exists, continue
-				} else {
-					char * cmd_buffer = malloc(dir_name_size + 12);
-					char arg [PATH_MAX];
-					get_bash_path(arg, dir_name);
-					sprintf(cmd_buffer, "mkdir -p %s", arg);
-					int sys_result = system(cmd_buffer);
-					if (sys_result != 0) {
-						fprintf(stderr, "failed to create directory '%s'\n", dir_name);
-						return -1;
-					}
-					rprintf("%s\n", cmd_buffer);
-					free(cmd_buffer);
-				}
-			}
-			int error = rename(sorted_list[i].name, new_list[i]);
-			char a1 [PATH_MAX], a2 [PATH_MAX];
-			get_bash_path(a1, sorted_list[i].name);
-			get_bash_path(a2, new_list[i]);
-			rprintf("mv %s %s\n", a1, a2);
-			if (error) rprintf(" # FAILED!");
-
-			int result = remove_empty_recursive(sorted_list[i].name);
-			if (result) return result;
-		}
+	for (int i=0; i < count_files; i++) {
+		int error = do_move(sorted_list[i].name, new_names[i]);
+		if (error) return error;
 	}
 
 	for (int i=arrlen(og_name_buffer)-1; i >= 0; --i) {
 		free(og_name_buffer[i].data);
 	}
-
-	free(new_list);
+	free(new_names);
 	free(buffer);
 	free(sorted_list);
 	arrfree(og_name_list);
