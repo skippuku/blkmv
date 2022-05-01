@@ -32,7 +32,7 @@ static const char FILEPATH_PREFIX [] = "/tmp/";
 static const char FILEPATH_POSTFIX [] = ".blkmv";
 
 static const char HELP [] =
-"blkmv v1.3 Copyright (C) 2021 cyman\n\n"
+"blkmv v1.4 Copyright (C) 2021 cyman\n\n"
 "usage: blkmv [OPTIONS] DIRECTORY\n"
 "-R     [R]ecursive\n"
 "-h     show [h]idden files\n"
