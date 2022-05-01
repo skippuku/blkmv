@@ -276,6 +276,19 @@ get_dir_name(char * ret_dir_name, const char * path) {
 
 #define rprintf(...) if(!(arg_mask&ARG_QUIET))printf(__VA_ARGS__)
 
+void
+get_bash_path(char * dest, const char * str) {
+	*dest++ = '"';
+	while (*str) {
+		if (*str == '"' || *str == '`' || *str == '\\' || *str == '$')
+			*dest++ = '\\';
+		*dest++ = *str;
+		str++;
+	}
+	*dest++ = '"';
+	*dest = '\0';
+}
+
 static int
 remove_empty_recursive(const char * dir_path) {
 	char dir_name [PATH_MAX];
@@ -298,7 +311,9 @@ remove_empty_recursive(const char * dir_path) {
 
 	if (file_count == 0) {
 		remove(dir_name);
-		rprintf("rm -r '%s'\n", dir_name);
+		char arg [PATH_MAX];
+		get_bash_path(arg, dir_name);
+		rprintf("rm -r %s\n", arg);
 		return remove_empty_recursive(dir_name);
 	} else {
 		return 0;
@@ -521,7 +536,9 @@ main(int argc, char ** args) {
 		if (new_list[i][0] == '#') {
 			if (remove(sorted_list[i].name))
 				rprintf("(failed) ");
-			rprintf("rm '%s'\n", sorted_list[i].name);
+			char arg [PATH_MAX];
+			get_bash_path(arg, sorted_list[i].name);
+			rprintf("rm %s\n", arg);
 		} else {
 			if (arg_mask & ARG_MKDIR) {
 				char dir_name [PATH_MAX];
@@ -532,10 +549,12 @@ main(int argc, char ** args) {
 						// directory exists, continue
 					} else {
 						char * cmd_buffer = malloc(dir_name_size + 12);
-						sprintf(cmd_buffer, "mkdir -p '%s'", dir_name);
+						char arg [PATH_MAX];
+						get_bash_path(arg, dir_name);
+						sprintf(cmd_buffer, "mkdir -p %s", arg);
 						int sys_result = system(cmd_buffer);
 						if (sys_result != 0) {
-							fprintf(stderr, "failed to create directory %s\n", dir_name);
+							fprintf(stderr, "failed to create directory '%s'\n", dir_name);
 							return -1;
 						}
 						rprintf("%s\n", cmd_buffer);
@@ -545,7 +564,10 @@ main(int argc, char ** args) {
 			}
 			if (rename(sorted_list[i].name, new_list[i]))
 				rprintf("(failed) ");
-			rprintf("mv '%s' '%s'\n", sorted_list[i].name, new_list[i]);
+			char a1 [PATH_MAX], a2 [PATH_MAX];
+			get_bash_path(a1, sorted_list[i].name);
+			get_bash_path(a2, new_list[i]);
+			rprintf("mv %s %s\n", a1, a2);
 
 			if (arg_mask & ARG_EMPTY) {
 				int result = remove_empty_recursive(sorted_list[i].name);
