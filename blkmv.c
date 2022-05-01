@@ -37,8 +37,6 @@ static const char HELP [] =
 "-R     [R]ecursive\n"
 "-h     show [h]idden files\n"
 "-f     show [f]ull paths\n"
-"-m     [m]ake new directories\n"
-"-e     remove [e]mpty directories\n"
 "-q     [q]uiet (no output)\n"
 "-D     [D]irectory mode\n"
 ;
@@ -56,10 +54,8 @@ static const char HELP_EXTRA [] =
 ;
 
 static enum {
-	ARG_HIDDEN = 0x1,
-	ARG_MKDIR  = 0x2,
-	ARG_EMPTY  = 0x4,
-	ARG_RECUR  = 0x8,
+	ARG_HIDDEN = 0x01,
+	ARG_RECUR  = 0x08,
 	ARG_FULL   = 0x10,
 	ARG_DMODE  = 0x20,
 	ARG_QUIET  = 0x40,
@@ -382,8 +378,6 @@ main(int argc, char ** args) {
 				for (int o=1; o < len; ++o) {
 					switch (args[i][o]) {
 					case 'h': arg_mask |= ARG_HIDDEN; break;
-					case 'm': arg_mask |= ARG_MKDIR;  break;
-					case 'e': arg_mask |= ARG_EMPTY;  break;
 					case 'R': arg_mask |= ARG_RECUR;  break;
 					case 'f': arg_mask |= ARG_FULL;   break;
 					case 'q': arg_mask |= ARG_QUIET;  break;
@@ -540,26 +534,24 @@ main(int argc, char ** args) {
 			get_bash_path(arg, sorted_list[i].name);
 			rprintf("rm %s\n", arg);
 		} else {
-			if (arg_mask & ARG_MKDIR) {
-				char dir_name [PATH_MAX];
-				int dir_name_size = get_dir_name(dir_name, new_list[i]);
-				if (dir_name_size) {
-					struct stat dir_stat;
-					if (stat(dir_name, &dir_stat) == 0 && dir_stat.st_mode & S_IFDIR) {
-						// directory exists, continue
-					} else {
-						char * cmd_buffer = malloc(dir_name_size + 12);
-						char arg [PATH_MAX];
-						get_bash_path(arg, dir_name);
-						sprintf(cmd_buffer, "mkdir -p %s", arg);
-						int sys_result = system(cmd_buffer);
-						if (sys_result != 0) {
-							fprintf(stderr, "failed to create directory '%s'\n", dir_name);
-							return -1;
-						}
-						rprintf("%s\n", cmd_buffer);
-						free(cmd_buffer);
+			char dir_name [PATH_MAX];
+			int dir_name_size = get_dir_name(dir_name, new_list[i]);
+			if (dir_name_size) {
+				struct stat dir_stat;
+				if (stat(dir_name, &dir_stat) == 0 && dir_stat.st_mode & S_IFDIR) {
+					// directory exists, continue
+				} else {
+					char * cmd_buffer = malloc(dir_name_size + 12);
+					char arg [PATH_MAX];
+					get_bash_path(arg, dir_name);
+					sprintf(cmd_buffer, "mkdir -p %s", arg);
+					int sys_result = system(cmd_buffer);
+					if (sys_result != 0) {
+						fprintf(stderr, "failed to create directory '%s'\n", dir_name);
+						return -1;
 					}
+					rprintf("%s\n", cmd_buffer);
+					free(cmd_buffer);
 				}
 			}
 			if (rename(sorted_list[i].name, new_list[i]))
@@ -569,10 +561,8 @@ main(int argc, char ** args) {
 			get_bash_path(a2, new_list[i]);
 			rprintf("mv %s %s\n", a1, a2);
 
-			if (arg_mask & ARG_EMPTY) {
-				int result = remove_empty_recursive(sorted_list[i].name);
-				if (result) return result;
-			}
+			int result = remove_empty_recursive(sorted_list[i].name);
+			if (result) return result;
 		}
 	}
 
