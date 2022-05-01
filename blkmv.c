@@ -24,7 +24,7 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <sys/stat.h>
 
 #define STB_DS_IMPLEMENTATION
-#include "stb_ds.h"
+#include "ext/stb_ds.h"
 
 static const char DEFAULT_EDITOR [] = "$EDITOR";
 
@@ -61,13 +61,7 @@ static enum {
 	ARG_QUIET  = 0x40,
 } arg_mask = 0;
 
-#define sarrlen(arr) (sizeof(arr)/sizeof(*arr))
-
-#ifdef __GNUC__
-#define UNLIKELY(x) __builtin_expect((x), 0)
-#else
-#define UNLIKELY(x) x
-#endif
+#define LENGTH(x) (sizeof(x)/sizeof(*(x)))
 
 typedef struct FileInfo {
 	const char * name;
@@ -127,7 +121,7 @@ sort_function_name(const FileInfo * info_a, const FileInfo * info_b) {
 	const char * a = info_a->name;
 	const char * b = info_b->name;
 	while (*a != '\0' && *b != '\0') {
-		if (UNLIKELY(*a <= '9' && *a >= '0' && *b <= '9' && *b >= '0')) {
+		if (*a <= '9' && *a >= '0' && *b <= '9' && *b >= '0') {
 			char *a_num_end, *b_num_end;
 			long a_num = strtol(a, &a_num_end, 10);
 			long b_num = strtol(b, &b_num_end, 10);
@@ -204,7 +198,7 @@ static void
 make_new_path(const char * dir_name, const char * d_name, char * new_path) {
 	if (strcmp(dir_name, ".") != 0) {
 		const char * to_join [] = {dir_name, d_name};
-		paths_join(new_path, sarrlen(to_join), to_join);
+		paths_join(new_path, LENGTH(to_join), to_join);
 	} else {
 		strcpy(new_path, d_name);
 	}
@@ -528,11 +522,11 @@ main(int argc, char ** args) {
 		if (same) continue;
 
 		if (new_list[i][0] == '#') {
-			if (remove(sorted_list[i].name))
-				rprintf("(failed) ");
+			int error = remove(sorted_list[i].name);
 			char arg [PATH_MAX];
 			get_bash_path(arg, sorted_list[i].name);
 			rprintf("rm %s\n", arg);
+			if (error) rprintf(" # FAILED!");
 		} else {
 			char dir_name [PATH_MAX];
 			int dir_name_size = get_dir_name(dir_name, new_list[i]);
@@ -554,12 +548,12 @@ main(int argc, char ** args) {
 					free(cmd_buffer);
 				}
 			}
-			if (rename(sorted_list[i].name, new_list[i]))
-				rprintf("(failed) ");
+			int error = rename(sorted_list[i].name, new_list[i]);
 			char a1 [PATH_MAX], a2 [PATH_MAX];
 			get_bash_path(a1, sorted_list[i].name);
 			get_bash_path(a2, new_list[i]);
 			rprintf("mv %s %s\n", a1, a2);
+			if (error) rprintf(" # FAILED!");
 
 			int result = remove_empty_recursive(sorted_list[i].name);
 			if (result) return result;
