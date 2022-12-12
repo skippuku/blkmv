@@ -23,6 +23,12 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 #include <unistd.h>
 #include <sys/stat.h>
 
+#if defined(__APPLE__)
+#include <sys/syslimits.h>
+#else
+#include <linux/limits.h>
+#endif
+
 #define STB_DS_IMPLEMENTATION
 #include "ext/stb_ds.h"
 
